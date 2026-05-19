@@ -1,0 +1,15 @@
+.DS_Store
+.playwright-cli/
+logs/
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+*/.venv/
+*/.pytest_cache/
+*/logs/
+*/runtime/
+*/output/
+*/screenshots/
+*/sessionhub/
+Ops-Cli/video/

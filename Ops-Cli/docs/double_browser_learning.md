@@ -1,0 +1,44 @@
+# 双浏览器学习方案
+
+## 标准口径
+
+新增接口能力、学习真实接口、沉淀 scene、后续转 API 执行时，统一采用标准双浏览器方法。
+
+## 两个浏览器的职责
+
+### 1. 主浏览器
+
+- 普通 Google Chrome Default profile
+- 由 Codex Chrome 插件接管
+- 走独立 CDP 端口，例如 `9223`
+- 用于真实页面探测、真实交互、真实请求观察
+
+### 2. 9222 浏览器
+
+- SessionHub 专用浏览器
+- 固定负责 scene 沉淀、复检、长期执行
+- 不承担主浏览器探测角色
+
+## 禁止事项
+
+- 不要把只用 `9222` 的 capture 流程称为双浏览器
+- 不要直接读取主浏览器 Cookie/Token 到业务脚本
+- 不要在业务项目里自己写 CDP / Playwright 探测逻辑
+
+## 典型流程
+
+```text
+主浏览器观察真实行为
+-> 确认 scene
+-> 9222 SessionHub 复刻并沉淀
+-> Ops-Cli 持续执行
+```
+
+## 推荐命令
+
+```bash
+ops --json browser check --port 9222
+ops --json jst browser learn --scene shop-goods-import
+ops --json tmcs bill learn
+ops --json tmcs product learn
+```

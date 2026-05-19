@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+.env
+logs/*.log
+data/*
+!data/.gitkeep
+sandbox/*
+!sandbox/.gitkeep
+runtime/*
+!runtime/.gitkeep
+!runtime/context/
+!runtime/context/.gitkeep

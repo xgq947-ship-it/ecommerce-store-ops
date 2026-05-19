@@ -1,0 +1,97 @@
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+from openpyxl import Workbook, load_workbook
+
+
+SKILL_DIR = Path(__file__).resolve().parents[1] / "skills" / "tmcs_sync_jst_shop_goods"
+sys.path.insert(0, str(SKILL_DIR))
+
+from excel_builder import IMPORT_HEADERS, build_import_workbooks, build_rows  # noqa: E402
+from input_loader import load_item_ids_from_excel, parse_item_ids  # noqa: E402
+
+
+def test_skill_does_not_contain_platform_browser_automation_code() -> None:
+    forbidden = ["playwright", "connect_over_cdp", "cookie", "localStorage", "sessionStorage", "http://", "https://", "selector"]
+    for path in SKILL_DIR.glob("*.py"):
+        if path.name == "cli_client.py":
+            continue
+        text = path.read_text(encoding="utf-8")
+        lowered = text.lower()
+        for token in forbidden:
+            assert token.lower() not in lowered, f"{path.name} should not contain platform-side token {token}"
+
+
+def test_parse_item_ids_dedupes_and_preserves_order() -> None:
+    assert parse_item_ids("123, 234,123,,345") == ["123", "234", "345"]
+
+
+def test_load_item_ids_from_excel_accepts_alias_headers(tmp_path: Path) -> None:
+    path = tmp_path / "商品ID列表.xlsx"
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["商品ID", "备注"])
+    ws.append(["1052534376394", "a"])
+    ws.append(["1052534376394", "duplicate"])
+    ws.append(["6247519890566", "b"])
+    wb.save(path)
+
+    assert load_item_ids_from_excel(path) == ["1052534376394", "6247519890566"]
+
+
+def test_build_rows_maps_stock_to_jst_import_shape() -> None:
+    import_rows, failures = build_rows(
+        requested_item_ids=["1052534376394"],
+        stock_rows=[
+            {
+                "platform_item_id": "1052534376394",
+                "platform_sku_id": "6247519890565",
+                "supplier_goods_id": "SUP-001",
+                "merchant_goods_code": "MGC-001",
+            }
+        ],
+    )
+
+    assert failures == []
+    assert import_rows == [
+        {
+            "线上款式编码": "1052534376394",
+            "线上商品编码": "MGC-001",
+            "线上国标码": "",
+            "平台店铺款式编码": "1052534376394",
+            "平台店铺商品编码": "SUP-001",
+            "原始商品编码": "MGC-001",
+            "线上商品名称": "",
+            "线上颜色规格": "",
+            "商品标识": "Retail",
+        }
+    ]
+
+
+def test_build_import_workbooks_writes_text_cells(tmp_path: Path) -> None:
+    result = build_import_workbooks(
+        import_rows=[
+            {
+                "线上款式编码": "1052534376394",
+                "线上商品编码": "MGC-001",
+                "线上国标码": "",
+                "平台店铺款式编码": "1052534376394",
+                "平台店铺商品编码": "SUP-001",
+                "原始商品编码": "MGC-001",
+                "线上商品名称": "",
+                "线上颜色规格": "",
+                "商品标识": "Retail",
+            }
+        ],
+        failures=[],
+        output_dir=tmp_path,
+        timestamp="20260518_120000",
+    )
+
+    wb = load_workbook(result["import_path"])
+    ws = wb.active
+    assert [cell.value for cell in ws[1]] == IMPORT_HEADERS
+    assert ws["A2"].value == "1052534376394"
+    assert ws["A2"].number_format == "@"

@@ -1,0 +1,17 @@
+data/sessions/
+logs/
+.env
+config/secrets.yaml
+*.curl
+__pycache__/
+*.pyc
+.DS_Store
+.venv/
+venv/
+
+skills/tmcs_sync_jst_shop_goods/data/jst_browser_profile.json
+skills/tmcs_sync_jst_shop_goods/output/
+skills/tmcs_sync_jst_shop_goods/logs/
+skills/tmcs_sync_jst_shop_goods/screenshots/
+*.xlsx
+*.log
