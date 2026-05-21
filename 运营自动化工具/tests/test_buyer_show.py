@@ -49,9 +49,16 @@ class BuyerShowTests(unittest.TestCase):
         self.assertEqual([name for name, _ in batches[1]["groups"]], ["4"])
         self.assertEqual(cursor_after, 0)
 
-    def test_verify_group_image_counts_requires_exact_count_when_shortage_zero(self):
+    def test_verify_group_image_counts_accepts_more_than_three_images_without_shortage(self):
         groups = [
             ("1", [Path("1.jpg"), Path("2.jpg"), Path("3.jpg"), Path("4.jpg")]),
+        ]
+
+        verify_group_image_counts(groups, images_per_group=5, allow_total_shortage=0)
+
+    def test_verify_group_image_counts_rejects_three_images(self):
+        groups = [
+            ("1", [Path("1.jpg"), Path("2.jpg"), Path("3.jpg")]),
         ]
 
         with self.assertRaisesRegex(SystemExit, "图片不足"):
@@ -89,6 +96,26 @@ class BuyerShowTests(unittest.TestCase):
                 images_per_group=5,
                 allow_total_shortage=0,
             )
+
+    def test_plan_group_batches_validates_only_selected_groups(self):
+        records = [
+            {"order_id": "o1", "order_date_key": "20260514"},
+        ]
+        groups = [
+            ("1", [Path("1a.jpg"), Path("1b.jpg"), Path("1c.jpg")]),
+            ("2", [Path("2a.jpg"), Path("2b.jpg"), Path("2c.jpg"), Path("2d.jpg")]),
+        ]
+
+        batches, cursor_after = plan_group_batches(
+            records=records,
+            groups=groups,
+            start_cursor=1,
+            images_per_group=5,
+            allow_total_shortage=0,
+        )
+
+        self.assertEqual([name for name, _ in batches[0]["groups"]], ["2"])
+        self.assertEqual(cursor_after, 0)
 
 
 if __name__ == "__main__":

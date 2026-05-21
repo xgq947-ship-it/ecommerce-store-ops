@@ -21,6 +21,7 @@ from ops_cli.platforms.jst.order import DEFAULT_REMARK_TEXT
 from ops_cli.platforms.jst.order import learn_order_logistics as learn_jst_order_logistics
 from ops_cli.platforms.jst.order import run_order_logistics as run_jst_order_logistics
 from ops_cli.platforms.jst.order import run_order_label as run_jst_order_label
+from ops_cli.platforms.jst.order import run_order_remark as run_jst_order_remark
 from ops_cli.platforms.jst.profit import get_month_profit, learn_jst_profit_scene
 from ops_cli.platforms.jst.profit import run_yesterday_profit as run_jst_profit_yesterday
 from ops_cli.platforms.jst.product import learn_jst_product_sync
@@ -39,6 +40,8 @@ from ops_cli.platforms.tmcs.inventory import learn_inventory_export as learn_tmc
 from ops_cli.platforms.tmcs.inventory import run_inventory_adjust as run_tmcs_inventory_adjust
 from ops_cli.platforms.tmcs.inventory import run_inventory_export as run_tmcs_inventory_export
 from ops_cli.platforms.tmcs.listing import create_listing as tmcs_create_listing
+from ops_cli.platforms.tmcs.promotion_bill import learn_promotion_bill as learn_tmcs_promotion_bill
+from ops_cli.platforms.tmcs.promotion_bill import run_promotion_bill_download as run_tmcs_promotion_bill_download
 from ops_cli.platforms.tmcs.product import learn_product_sync as learn_tmcs_product_sync
 from ops_cli.platforms.tmcs.product import run_product_sync as run_tmcs_product_sync
 from ops_cli.platforms.tmcs.product import list_products as tmcs_list_products
@@ -64,6 +67,7 @@ tmcs_product_app = typer.Typer(help="TMCS product commands.", no_args_is_help=Tr
 tmcs_inventory_app = typer.Typer(help="TMCS inventory commands.", no_args_is_help=True)
 tmcs_stock_app = typer.Typer(help="TMCS stock query commands.", no_args_is_help=True)
 tmcs_bill_app = typer.Typer(help="TMCS bill commands.", no_args_is_help=True)
+tmcs_promotion_bill_app = typer.Typer(help="TMCS promotion bill commands.", no_args_is_help=True)
 tmcs_listing_app = typer.Typer(help="TMCS listing commands.", no_args_is_help=True)
 
 
@@ -260,6 +264,35 @@ def jst_order_label(
             limit=limit,
             execute=execute,
             labels=label,
+            remark_text=remark_text,
+        ),
+    )
+
+
+@jst_order_app.command("remark")
+def jst_order_remark(
+    ctx: typer.Context,
+    order_id: list[str] = typer.Option(None, "--order-id", help="Order ID. Repeatable."),
+    input_path: str | None = typer.Option(None, "--input", help="Order JSON file with orders[]."),
+    limit: int | None = typer.Option(None, "--limit", help="Only process the first N orders."),
+    execute: bool = typer.Option(False, "--execute", help="Actually write seller remark."),
+    remark_text: str = typer.Option(..., "--remark-text", help="Seller remark text."),
+) -> None:
+    _execute(
+        ctx,
+        command_name="ops jst order remark",
+        params={
+            "order_ids": order_id,
+            "input_path": input_path,
+            "limit": limit,
+            "execute": execute,
+            "remark_text": remark_text,
+        },
+        handler=lambda: run_jst_order_remark(
+            order_ids=order_id,
+            input_path=input_path,
+            limit=limit,
+            execute=execute,
             remark_text=remark_text,
         ),
     )
@@ -620,6 +653,44 @@ def tmcs_bill_learn(
     )
 
 
+@tmcs_promotion_bill_app.command("download")
+def tmcs_promotion_bill_download(
+    ctx: typer.Context,
+    source: str = typer.Option("all", "--source", help="all, zdx, or wxt."),
+    start: str | None = typer.Option(None, "--start", help="Start date in YYYY-MM-DD."),
+    end: str | None = typer.Option(None, "--end", help="End date in YYYY-MM-DD."),
+    last_month: bool = typer.Option(False, "--last-month", help="Download previous natural month's promotion bills."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview only, do not download files."),
+) -> None:
+    _execute(
+        ctx,
+        command_name="ops tmcs promotion-bill download",
+        params={"source": source, "start": start, "end": end, "last_month": last_month, "dry_run": dry_run},
+        handler=lambda: run_tmcs_promotion_bill_download(
+            source=source,
+            start=start,
+            end=end,
+            last_month=last_month,
+            dry_run=dry_run,
+        ),
+    )
+
+
+@tmcs_promotion_bill_app.command("learn")
+def tmcs_promotion_bill_learn(
+    ctx: typer.Context,
+    source: str = typer.Option("all", "--source", help="all, zdx, or wxt."),
+    force: bool = typer.Option(False, "--force", help="Force recapture even if scene exists."),
+    timeout: int = typer.Option(90, "--timeout", help="Seconds to wait for primary Chrome export request capture."),
+) -> None:
+    _execute(
+        ctx,
+        command_name="ops tmcs promotion-bill learn",
+        params={"source": source, "force": force, "timeout": timeout},
+        handler=lambda: learn_tmcs_promotion_bill(source=source, force=force, timeout=timeout),
+    )
+
+
 @tmcs_listing_app.command("create")
 def tmcs_listing_create(ctx: typer.Context) -> None:
     _execute(ctx, command_name="ops tmcs listing create", params={}, handler=tmcs_create_listing)
@@ -640,6 +711,7 @@ tmcs_app.add_typer(tmcs_product_app, name="product")
 tmcs_app.add_typer(tmcs_inventory_app, name="inventory")
 tmcs_app.add_typer(tmcs_stock_app, name="stock")
 tmcs_app.add_typer(tmcs_bill_app, name="bill")
+tmcs_app.add_typer(tmcs_promotion_bill_app, name="promotion-bill")
 tmcs_app.add_typer(tmcs_listing_app, name="listing")
 app.add_typer(browser_app, name="browser")
 app.add_typer(jst_app, name="jst")

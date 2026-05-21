@@ -84,6 +84,10 @@ ops --json tmcs product sync --use-local-only
 ops --json tmcs product sync --force-refresh
 ops --json tmcs bill download --last-month
 ops --json tmcs bill download --download-statement-list --last-month
+ops --json tmcs promotion-bill learn --source all
+ops --json tmcs promotion-bill download --last-month
+ops --json tmcs promotion-bill download --source zdx --last-month
+ops --json tmcs promotion-bill download --source wxt --last-month
 ops --json tmcs inventory export
 ops tmcs stock query --item-ids 1052534376394,234567 --warehouse-code mc_aokesi_suolong --output json
 
@@ -95,11 +99,14 @@ ops --json jst product sync --keep-brands 奥克斯 苏泊尔
 ops --json jst order label --input /path/to/latest_brush_orders.json
 ops --json jst order label --input /path/to/latest_brush_orders.json --limit 10
 ops --json jst order label --input /path/to/latest_brush_orders.json --execute
+ops --json jst order remark --order-id 123456 --remark-text "需要填写的卖家备注" --execute
 ops --json jst order reimburse --outer-order-id 3302371490526182153 --principal-total 965 --payout-total 140 --product-code SUZBHLYZHH1001 --workbook-file /path/to/register.xlsx
 ops --json jst order reimburse --outer-order-id 3302371490526182153 --principal-total 965 --payout-total 140 --product-code SUZBHLYZHH1001 --workbook-file /path/to/register.xlsx --execute
 ops --json jst browser learn --scene shop-goods-import
 ops --json jst shop-goods import --file /path/to/jst_shop_goods_import.xlsx --shop-name "（猫超）启明工贸有限公司" --mode cover --output json
 ```
+
+推广账单默认下载上一个自然月；智多星按页面文件中心返回 `.xlsx`，万象台按阿里妈妈页面真实返回保留 `.csv`，统一落到 `~/Downloads`，再由业务编排层读取。
 
 ## 环境变量
 
@@ -119,13 +126,13 @@ TMCS_BILL_DOWNLOAD_DIR=/Users/dasheng/Downloads
 说明：
 
 - `SESSIONHUB_ROOT` 当前默认指向 `Ops-Cli/sessionhub`，会话资产与平台执行代码放在同一个项目边界内。
-- `PRIMARY_CHROME_CDP_URL` 只给主浏览器探测用，不能填 `9222`。
+- `PRIMARY_CHROME_CDP_URL` 是可选的主浏览器接管入口；主浏览器指你本机日常使用的 Google Chrome，不能填 `9222`。
 - `9222` 固定给 SessionHub 专用浏览器。
 
 ## 双浏览器学习机制
 
-- 主浏览器：正在使用的普通 Google Chrome Default profile。
-- 主浏览器用途：通过 Codex Chrome 插件接管，在独立 CDP 端口例如 `9223` 上做真实页面探测和真实请求学习。
+- 主浏览器：你本机日常使用的 Google Chrome，也就是平时人工登录、打开平台后台的那个浏览器。
+- 主浏览器用途：先人工或通过 Codex Chrome 插件走一遍真实页面，确认真实按钮、字段、下载链路；如果该浏览器暴露了可接管入口，再用于捕获真实请求。
 - `9222` 浏览器：只给 SessionHub 长期沉淀 scene、复检和稳定执行。
 - 禁止把“只用 9222 的单浏览器 capture”叫做双浏览器学习。
 

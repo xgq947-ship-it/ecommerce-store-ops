@@ -313,13 +313,13 @@ def _set_labels(client: httpx.Client, url: str, cookie: str, o_id: str, labels: 
     )
 
 
-def _write_failed_orders(results: list[dict[str, Any]]) -> str | None:
+def _write_failed_orders(results: list[dict[str, Any]], *, prefix: str = "jst_tag_failed_orders") -> str | None:
     failed = [row for row in results if row["status"] != "success"]
     if not failed:
         return None
     output_dir = Path.cwd() / "data"
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / f"jst_tag_failed_orders_{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
+    output_path = output_dir / f"{prefix}_{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
     output_path.write_text(
         json.dumps({"failed_orders": failed}, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -916,5 +916,90 @@ def run_order_label(
         success=True,
         platform="jst",
         command="order label",
+        data=data,
+    )
+
+
+def run_order_remark(
+    *,
+    order_ids: list[str],
+    input_path: str | None,
+    limit: int | None,
+    execute: bool,
+    remark_text: str,
+) -> CommandResponse:
+    if not order_ids and not input_path:
+        raise RuntimeError("请传入 --order-id 或 --input")
+    orders, resolved_input = _normalize_orders(order_ids=order_ids, input_path=input_path, limit=limit)
+    if not remark_text.strip():
+        raise RuntimeError("--remark-text 不能为空")
+
+    session = get_scene_manager().ensure_scene(JST_SITE, JST_ORDER_SCENE)
+    headers = dict(session.get("headers") or {})
+    cookie = str(headers.get("Cookie") or headers.get("cookie") or "").strip()
+    if not cookie:
+        raise RuntimeError("SessionHub 已返回 session，但缺少 Cookie。请重新捕获聚水潭会话。")
+
+    url = str(session.get("url") or f"https://www.erp321.com{DEFAULT_JST_ORDER_PATH}").strip()
+    form_template = _extract_form_template(session)
+    mode = "execute" if execute else "dry-run"
+    results: list[dict[str, Any]] = []
+
+    with build_client(follow_redirects=True) as client:
+        for order_no in orders:
+            try:
+                matched_o_ids = _query_order_o_ids(client, url, cookie, order_no, form_template)
+                if not matched_o_ids:
+                    results.append({"order_no": order_no, "status": "failed_not_found", "reason": "聚水潭未找到订单"})
+                    continue
+                if len(matched_o_ids) > 1:
+                    results.append(
+                        {
+                            "order_no": order_no,
+                            "status": "failed_multi",
+                            "reason": f"聚水潭返回 {len(matched_o_ids)} 条记录",
+                            "matched_o_ids": matched_o_ids,
+                        }
+                    )
+                    continue
+
+                o_id = matched_o_ids[0]
+                if execute:
+                    _append_remark(client, url, cookie, o_id, remark_text, form_template)
+                results.append({"order_no": order_no, "status": "success", "o_id": o_id})
+            except httpx.HTTPError as exc:
+                results.append({"order_no": order_no, "status": "failed_request", "reason": str(exc)})
+            except Exception as exc:
+                results.append({"order_no": order_no, "status": "failed_error", "reason": str(exc)})
+
+    failed_output = _write_failed_orders(results, prefix="jst_remark_failed_orders")
+    success_count = sum(1 for row in results if row["status"] == "success")
+    not_found_count = sum(1 for row in results if row["status"] == "failed_not_found")
+    multi_count = sum(1 for row in results if row["status"] == "failed_multi")
+    failed_count = sum(1 for row in results if row["status"] not in {"success", "failed_not_found", "failed_multi"})
+
+    data: dict[str, Any] = {
+        "mode": mode,
+        "site": JST_SITE,
+        "scene": JST_ORDER_SCENE,
+        "session_source": session.get("source", "sessionhub"),
+        "input_path": resolved_input,
+        "remark_text": remark_text,
+        "summary": {
+            "total": len(results),
+            "success": success_count,
+            "not_found": not_found_count,
+            "multi_match": multi_count,
+            "failed": failed_count,
+        },
+        "results": results,
+    }
+    if failed_output:
+        data["failed_output"] = failed_output
+
+    return CommandResponse(
+        success=True,
+        platform="jst",
+        command="order remark",
         data=data,
     )

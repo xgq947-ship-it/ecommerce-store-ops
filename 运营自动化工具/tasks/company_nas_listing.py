@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -434,6 +435,10 @@ def score_index_record(record: dict[str, Any], *, brand: str, category: str, mod
 
 def indexed_model_source(brand: str, category: str, base: Path, path_text: str) -> tuple[str, Path, str]:
     display, fallback = model_source(base, path_text)
+    _, subdirs = normalize_model(path_text)
+    if subdirs and fallback.is_dir():
+        return display, fallback, "direct_path"
+
     payload = load_nas_index()
     if not payload:
         return display, fallback, "fallback_no_index"
@@ -479,37 +484,77 @@ def dir_matches(name: str, aliases: set[str]) -> bool:
     return normalize_dir_name(name) in aliases
 
 
-def iter_matching_child_dirs(base: Path, aliases: set[str]) -> list[Path]:
-    if not base.exists():
+ChildDirCache = dict[Path, list[Path]]
+
+
+def safe_child_dirs(
+    base: Path,
+    include_buyer_show: bool,
+    cache: ChildDirCache | None = None,
+) -> list[Path]:
+    if cache is not None and base in cache:
+        return cache[base]
+    try:
+        children = list(base.iterdir())
+    except OSError:
+        if cache is not None:
+            cache[base] = []
         return []
-    return [
-        child for child in base.iterdir()
-        if child.is_dir() and dir_matches(child.name, aliases)
-    ]
+    dirs: list[Path] = []
+    for child in children:
+        try:
+            is_dir = child.is_dir()
+        except OSError:
+            continue
+        if is_dir and not should_skip_path(child, include_buyer_show):
+            dirs.append(child)
+    if cache is not None:
+        cache[base] = dirs
+    return dirs
 
 
-def material_roots(base: Path, include_buyer_show: bool) -> list[Path]:
+def iter_matching_child_dirs(
+    base: Path,
+    aliases: set[str],
+    include_buyer_show: bool,
+    cache: ChildDirCache | None = None,
+) -> list[Path]:
+    return [child for child in safe_child_dirs(base, include_buyer_show, cache) if dir_matches(child.name, aliases)]
+
+
+def material_roots(
+    base: Path,
+    include_buyer_show: bool,
+    cache: ChildDirCache | None = None,
+) -> list[Path]:
     roots = [base]
-    if not base.exists():
-        return roots
-    for child in base.iterdir():
-        if child.is_dir() and not should_skip_path(child, include_buyer_show):
-            roots.append(child)
+    roots.extend(safe_child_dirs(base, include_buyer_show, cache))
     return roots
 
 
-def iter_main_image_dirs(base: Path, include_buyer_show: bool) -> list[Path]:
+def iter_main_image_dirs(
+    base: Path,
+    include_buyer_show: bool,
+    roots: list[Path] | None = None,
+    cache: ChildDirCache | None = None,
+) -> list[Path]:
     matches: list[Path] = []
-    for root in material_roots(base, include_buyer_show):
-        for parent in iter_matching_child_dirs(root, MAIN_IMAGE_PARENT_ALIASES):
-            matches.extend(iter_matching_child_dirs(parent, MAIN_IMAGE_CHILD_ALIASES))
+    for root in roots or material_roots(base, include_buyer_show, cache):
+        for parent in iter_matching_child_dirs(root, MAIN_IMAGE_PARENT_ALIASES, include_buyer_show, cache):
+            matches.extend(iter_matching_child_dirs(parent, MAIN_IMAGE_CHILD_ALIASES, include_buyer_show, cache))
     return matches
 
 
-def iter_category_dirs(base: Path, aliases: set[str], include_buyer_show: bool) -> list[Path]:
+def iter_category_dirs(
+    base: Path,
+    aliases: set[str],
+    include_buyer_show: bool,
+    roots: list[Path] | None = None,
+    cache: ChildDirCache | None = None,
+) -> list[Path]:
     matches: list[Path] = []
-    for root in material_roots(base, include_buyer_show):
-        matches.extend(iter_matching_child_dirs(root, aliases))
+    for root in roots or material_roots(base, include_buyer_show, cache):
+        matches.extend(iter_matching_child_dirs(root, aliases, include_buyer_show, cache))
     return matches
 
 
@@ -529,8 +574,6 @@ def should_skip_path(path: Path, include_buyer_show: bool) -> bool:
 def collect_under(base: Path, rel_dir: Path | str, include_buyer_show: bool, predicate=lambda p: True) -> list[Path]:
     start = base / rel_dir
     out: list[Path] = []
-    if not start.exists():
-        return out
     for root, dirs, files in os.walk(start):
         dirs[:] = [d for d in dirs if not should_skip_path(Path(root) / d, include_buyer_show)]
         for name in files:
@@ -550,29 +593,38 @@ def selected_files(base: Path, include_buyer_show: bool) -> list[Path]:
     # `790*`; white-transparent assets are flattened to the product root; buyer
     # show stays off unless `--include-buyer-show` is set.
     files: list[Path] = []
-    for start in iter_main_image_dirs(base, include_buyer_show):
+    child_dir_cache: ChildDirCache = {}
+    roots = material_roots(base, include_buyer_show, child_dir_cache)
+    for start in iter_main_image_dirs(base, include_buyer_show, roots, child_dir_cache):
         files += collect_under(base, start, include_buyer_show, lambda p: is_800(p) and p.suffix.lower() in {".jpg", ".jpeg"})
-    for start in iter_category_dirs(base, SKU_DIR_ALIASES, include_buyer_show):
+    for start in iter_category_dirs(base, SKU_DIR_ALIASES, include_buyer_show, roots, child_dir_cache):
         files += collect_under(base, start, include_buyer_show, lambda p: is_800(p) and p.suffix.lower() in {".jpg", ".jpeg"})
 
-    for detail in iter_category_dirs(base, DETAIL_DIR_ALIASES, include_buyer_show):
+    for detail in iter_category_dirs(base, DETAIL_DIR_ALIASES, include_buyer_show, roots, child_dir_cache):
         # Keep both historical layouts:
         # 1. detail/790/*.jpg
         # 2. detail/*.jpg|*.gif with "790" in filename
+        # One walk covers both layouts; WebDAV traversal is the slow path.
+        def is_detail_790(p: Path, detail_dir: Path = detail) -> bool:
+            if "790" in p.name:
+                return True
+            try:
+                rel_parts = p.relative_to(detail_dir).parts[:-1]
+            except ValueError:
+                return False
+            return any(part.startswith("790") for part in rel_parts)
+
         files += collect_under(
             base,
             detail,
             include_buyer_show,
-            lambda p: "790" in p.name
+            is_detail_790,
         )
-        for child in detail.iterdir():
-            if child.is_dir() and child.name.startswith("790"):
-                files += collect_under(base, child, include_buyer_show)
 
-    for start in iter_category_dirs(base, WHITE_TRANSPARENT_ALIASES, include_buyer_show):
+    for start in iter_category_dirs(base, WHITE_TRANSPARENT_ALIASES, include_buyer_show, roots, child_dir_cache):
         files += collect_under(base, start, include_buyer_show, lambda p: is_800(p))
 
-    for start in iter_category_dirs(base, SCENE_DIR_ALIASES, include_buyer_show):
+    for start in iter_category_dirs(base, SCENE_DIR_ALIASES, include_buyer_show, roots, child_dir_cache):
         files += collect_under(base, start, include_buyer_show, lambda p: is_800(p) and p.suffix.lower() in {".jpg", ".jpeg"})
 
     if include_buyer_show:
@@ -889,14 +941,19 @@ def save_listing(path: Path, rows: list[list[Any]], title: str) -> None:
     wb.save(path)
 
 
-def validate_outputs(base: Path, listing_files: list[Path], include_buyer_show: bool) -> dict[str, Any]:
+def validate_outputs(base: Path | list[Path], listing_files: list[Path], include_buyer_show: bool) -> dict[str, Any]:
+    bases = base if isinstance(base, list) else [base]
     invalid_files = []
-    for root, _, files in os.walk(base):
-        for name in files:
-            p = Path(root) / name
-            if p.suffix.lower() in SKIP_EXTS or p.name in SKIP_NAMES:
-                invalid_files.append(str(p))
-    buyer_show_dirs = [str(p) for p in base.rglob("买家秀") if p.is_dir()] if not include_buyer_show else []
+    for item_base in bases:
+        for root, _, files in os.walk(item_base):
+            for name in files:
+                p = Path(root) / name
+                if p.suffix.lower() in SKIP_EXTS or p.name in SKIP_NAMES:
+                    invalid_files.append(str(p))
+    buyer_show_dirs = []
+    if not include_buyer_show:
+        for item_base in bases:
+            buyer_show_dirs.extend(str(p) for p in item_base.rglob("买家秀") if p.is_dir())
 
     rule_errors = []
     for listing_file in listing_files:
@@ -938,6 +995,7 @@ def main() -> None:
     target_base = target_base_dir(args.brand, args.category, args.target_root)
     plan = []
     listing_files: list[Path] = []
+    target_dirs: list[Path] = []
     jst_headers: list[str] = []
     jst_rows: list[tuple[Any, ...]] = []
     if not args.skip_excel:
@@ -959,8 +1017,12 @@ def main() -> None:
                     "copied_files": 0,
                 })
                 continue
+            selection_start = time.monotonic()
             files = selected_files(src, args.include_buyer_show)
+            selection_seconds = round(time.monotonic() - selection_start, 3)
+            copy_start = time.monotonic()
             copied, missing_files = copy_product(src, dst, files, replace=not args.no_replace, dry_run=args.dry_run)
+            copy_seconds = round(time.monotonic() - copy_start, 3)
             record = {
                 "model": display,
                 "manual_code": spec.manual_code,
@@ -970,9 +1032,12 @@ def main() -> None:
                 "status": "ok",
                 "selected_files": len(files),
                 "copied_files": copied,
+                "selection_seconds": selection_seconds,
+                "copy_seconds": copy_seconds,
                 "missing_files": missing_files,
             }
             plan.append(record)
+            target_dirs.append(dst)
             if not args.skip_excel and not args.dry_run:
                 match, remark = match_jst(display, spec.manual_code, jst_headers, jst_rows)
                 row = listing_row(display, args.brand, args.category, match, remark, jst_headers)
@@ -981,7 +1046,7 @@ def main() -> None:
                 listing_files.append(listing_path)
 
         if not args.skip_excel and not args.dry_run:
-            validation = validate_outputs(target_base, listing_files, args.include_buyer_show)
+            validation = validate_outputs(target_dirs, listing_files, args.include_buyer_show)
         else:
             validation = {}
 

@@ -28,6 +28,23 @@ ops --json ...
 }
 ```
 
+推广账单下载同样遵守该结构：
+
+```json
+{
+  "success": true,
+  "platform": "tmcs",
+  "command": "promotion-bill download",
+  "data": {
+    "sources": [],
+    "downloaded_files": [],
+    "failed": []
+  }
+}
+```
+
+推广账单文件名统一为 `智多星推广账单_YYYY-MM.xlsx` 和 `万象台推广账单_YYYY-MM.csv`；如果平台后续返回 Excel 二进制，Ops-Cli 会按真实内容自动保留 `.xlsx`。
+
 ## 外部编排项目应做什么
 
 - 只负责组装业务参数

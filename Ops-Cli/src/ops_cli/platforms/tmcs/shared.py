@@ -151,6 +151,7 @@ def find_download_url(value: Any) -> str | None:
         preferred_keys = (
             "downloadUrl",
             "downloadURL",
+            "downloadLink",
             "fileUrl",
             "fileURL",
             "fileStoreUrl",

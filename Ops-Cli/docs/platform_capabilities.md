@@ -50,6 +50,8 @@
 - `ops tmcs stock query --item-ids ... --warehouse-code ... --output json`
 - `ops --json tmcs bill learn`
 - `ops --json tmcs bill download`
+- `ops --json tmcs promotion-bill learn --source all`
+- `ops --json tmcs promotion-bill download --last-month`
 - `ops --json tmcs listing create`
 
 已覆盖能力：
@@ -58,6 +60,7 @@
 - 一盘货库存查询
 - 库存导出 / 调整
 - 月账单下载
+- 推广账单下载：智多星、万象台；智多星保留 `.xlsx`，万象台按页面真实返回保留 `.csv`
 
 ## 浏览器能力
 

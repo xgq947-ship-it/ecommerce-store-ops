@@ -1,0 +1,163 @@
+import json
+from datetime import date
+
+import pytest
+
+from ops_cli.platforms.tmcs import promotion_bill
+
+
+def _write_template(tmp_path, sources=None):
+    (tmp_path / "data" / "tmcs").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "runtime" / "context").mkdir(parents=True, exist_ok=True)
+    template_path = tmp_path / "data" / "tmcs" / "promotion_bill_template.json"
+    template_path.write_text(
+        json.dumps(
+            {
+                "defaults": {"output_dir": str(tmp_path / "downloads")},
+                "sources": sources
+                or {
+                    "zdx": {
+                        "url": "https://example.com/zdx/export",
+                        "method": "POST",
+                        "headers": {"cookie": "a=b"},
+                        "post_data_json": {"start": "__START_DATE__", "end": "__END_DATE__"},
+                    },
+                    "wxt": {
+                        "url": "https://example.com/wxt/export",
+                        "method": "POST",
+                        "headers": {"cookie": "a=b"},
+                        "post_data_form": {"tradeStart": "__START_DATE__", "tradeEnd": "__END_DATE__"},
+                    },
+                },
+                "download_query": {
+                    "url": "https://example.com/query",
+                    "method": "POST",
+                    "headers": {"cookie": "a=b"},
+                    "post_data_json": {"parameters": [{"pageIndex": 1, "pageSize": 20}]},
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    return template_path
+
+
+def test_last_month_uses_natural_month_without_grace(monkeypatch) -> None:
+    monkeypatch.setattr(promotion_bill, "previous_month_range", lambda: ("2026-04-01", "2026-04-30"))
+
+    begin, finish = promotion_bill._normalize_dates(start=None, end=None, last_month=True)
+
+    assert begin == date(2026, 4, 1)
+    assert finish == date(2026, 4, 30)
+
+
+def test_apply_date_placeholders_replaces_nested_values() -> None:
+    payload = {
+        "range": ["__START_DATE__", "__END_DATE__"],
+        "query": {"start": "__START_DATE__ 00:00:00", "end": "__END_DATE__ 23:59:59"},
+    }
+
+    assert promotion_bill._apply_date_placeholders(payload, "2026-04-01", "2026-04-30") == {
+        "range": ["2026-04-01", "2026-04-30"],
+        "query": {"start": "2026-04-01 00:00:00", "end": "2026-04-30 23:59:59"},
+    }
+
+
+def test_json_task_payload_is_not_misclassified_as_csv() -> None:
+    assert promotion_bill._is_probably_csv(b'{\"data\":{\"taskId\":\"GEI@x\"},\"success\":true}') is False
+
+
+def test_single_line_csv_header_is_classified_as_csv() -> None:
+    assert promotion_bill._is_probably_csv("记账时间,交易日期,收支类型,交易类型,操作金额(元)\n".encode("gb18030")) is True
+
+
+def test_download_dry_run_lists_selected_source(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _write_template(tmp_path)
+    monkeypatch.setattr(promotion_bill, "check_scene_or_fail", lambda *args, **kwargs: {"status": "valid"})
+
+    result = promotion_bill.run_promotion_bill_download(source="zdx", start="2026-04-01", end="2026-04-30", dry_run=True)
+
+    assert result.command == "promotion-bill download"
+    assert result.data["dry_run"] is True
+    assert [item["source"] for item in result.data["sources"]] == ["zdx"]
+    assert result.data["start"] == "2026-04-01"
+    assert result.data["end"] == "2026-04-30"
+
+
+def test_download_supports_direct_file_url(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _write_template(tmp_path, sources={"zdx": {"url": "https://example.com/export", "method": "POST", "headers": {}, "post_data_json": {}}})
+    monkeypatch.setattr(promotion_bill, "check_scene_or_fail", lambda *args, **kwargs: {"status": "valid"})
+    monkeypatch.setattr(promotion_bill, "tmcs_request", lambda *args, **kwargs: (200, {"data": {"downloadUrl": "https://oss.example.com/zdx.xlsx"}}, b""))
+    monkeypatch.setattr(promotion_bill, "tmcs_download", lambda *args, **kwargs: (200, None, b"PK\x03\x04direct"))
+
+    result = promotion_bill.run_promotion_bill_download(source="zdx", start="2026-04-01", end="2026-04-30")
+
+    assert result.data["failed"] == []
+    assert result.data["downloaded_files"][0].endswith("智多星推广账单_2026-04.xlsx")
+
+
+def test_download_supports_task_id(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _write_template(tmp_path, sources={"wxt": {"url": "https://example.com/export", "method": "POST", "headers": {}, "post_data_form": {}}})
+    monkeypatch.setattr(promotion_bill, "check_scene_or_fail", lambda *args, **kwargs: {"status": "valid"})
+    monkeypatch.setattr(promotion_bill, "tmcs_request", lambda *args, **kwargs: (200, {"data": {"taskId": "task-1"}}, b""))
+    monkeypatch.setattr(promotion_bill, "tmcs_download", lambda *args, **kwargs: (200, None, "交易日期,收入,支出\n2026-04-01,0,0\n".encode()))
+
+    result = promotion_bill.run_promotion_bill_download(source="wxt", start="2026-04-01", end="2026-04-30")
+
+    assert result.data["failed"] == []
+    assert result.data["downloaded_files"][0].endswith("万象台推广账单_2026-04.csv")
+
+
+def test_download_retries_gei_task_until_excel_ready(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _write_template(tmp_path, sources={"zdx": {"url": "https://example.com/export", "method": "POST", "headers": {}, "post_data_json": {}}})
+    monkeypatch.setattr(promotion_bill, "check_scene_or_fail", lambda *args, **kwargs: {"status": "valid"})
+    monkeypatch.setattr(promotion_bill.time, "sleep", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(promotion_bill, "tmcs_request", lambda *args, **kwargs: (200, {"data": {"taskId": "task-1"}}, b""))
+    responses = iter(
+        [
+            (200, {"data": {"taskId": "task-1"}}, b'{"data":{"taskId":"task-1"},"success":true}'),
+            (200, None, b"PK\x03\x04excel"),
+        ]
+    )
+    monkeypatch.setattr(promotion_bill, "tmcs_download", lambda *args, **kwargs: next(responses))
+
+    result = promotion_bill.run_promotion_bill_download(source="zdx", start="2026-04-01", end="2026-04-30")
+
+    assert result.data["failed"] == []
+    assert result.data["downloaded_files"][0].endswith("智多星推广账单_2026-04.xlsx")
+
+
+def test_download_supports_download_center_poll(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _write_template(tmp_path, sources={"zdx": {"url": "https://example.com/export", "method": "POST", "headers": {}, "post_data_json": {}}})
+    monkeypatch.setattr(promotion_bill, "check_scene_or_fail", lambda *args, **kwargs: {"status": "valid"})
+    monkeypatch.setattr(promotion_bill.time, "sleep", lambda *_args, **_kwargs: None)
+
+    def fake_request(*args, **kwargs):
+        url = args[1] if len(args) > 1 else kwargs.get("url")
+        if str(url).endswith("/query"):
+            return 200, {"data": [{"fileName": "智多星推广账单", "fileUrl": "https://oss.example.com/zdx.xlsx"}]}, b""
+        return 200, {"success": True}, b""
+
+    monkeypatch.setattr(promotion_bill, "tmcs_request", fake_request)
+    monkeypatch.setattr(promotion_bill, "tmcs_download", lambda *args, **kwargs: (200, None, b"PK\x03\x04center"))
+
+    result = promotion_bill.run_promotion_bill_download(source="zdx", start="2026-04-01", end="2026-04-30")
+
+    assert result.data["failed"] == []
+    assert result.data["downloaded_files"][0].endswith(".xlsx")
+
+
+def test_download_fails_when_all_selected_sources_fail(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _write_template(tmp_path, sources={"zdx": {"url": "https://example.com/export", "method": "POST", "headers": {}, "post_data_json": {}}})
+    monkeypatch.setattr(promotion_bill, "check_scene_or_fail", lambda *args, **kwargs: {"status": "valid"})
+    monkeypatch.setattr(promotion_bill, "tmcs_request", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    with pytest.raises(RuntimeError, match="推广账单下载全部失败"):
+        promotion_bill.run_promotion_bill_download(source="zdx", start="2026-04-01", end="2026-04-30")

@@ -9,9 +9,10 @@
 ### 1. 主浏览器
 
 - 普通 Google Chrome Default profile
-- 由 Codex Chrome 插件接管
-- 走独立 CDP 端口，例如 `9223`
+- 指你本机日常使用的 Google Chrome
+- 由人工操作或 Codex Chrome 插件接管
 - 用于真实页面探测、真实交互、真实请求观察
+- 只有主浏览器暴露了可接管入口时，Ops-Cli 才能自动捕获网络请求
 
 ### 2. 9222 浏览器
 

@@ -34,7 +34,7 @@ from core.config_loader import get_path  # noqa: E402
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".heic", ".webp"}
 MAIN_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 ET.register_namespace("", MAIN_NS)
-MIN_IMAGES_PER_GROUP = 3
+MIN_IMAGES_PER_GROUP = 4
 
 
 def parse_args() -> argparse.Namespace:
@@ -44,8 +44,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--workbook")
     parser.add_argument("--groups", help="Comma-separated group folder names or numbers, e.g. 6,7,8 or 外拍1,外拍2")
     parser.add_argument("--batch", help="Only use grouped folders whose names contain this text, e.g. 外拍")
-    parser.add_argument("--images-per-group", type=int, default=5)
-    parser.add_argument("--allow-total-shortage", type=int, default=0, help="Allow total image shortage across all groups, e.g. 1 means one group may have one fewer image than requested.")
+    parser.add_argument("--images-per-group", type=int, default=5, help="Maximum images copied per order folder. Groups with at least 4 images are accepted by default.")
+    parser.add_argument("--allow-total-shortage", type=int, default=0, help="Deprecated compatibility option. Buyer-show groups now require more than 3 images instead of an exact target count.")
     parser.add_argument("--desktop", default=str(get_path("buyer_show_output_dir")))
     parser.add_argument("--reset-rotation", action="store_true")
     parser.add_argument("--rotation-key", help="Override the default rotation scope key.")
@@ -186,18 +186,10 @@ def explicit_groups(base: Path, groups_arg: str) -> list[tuple[str, list[Path]]]
 
 def verify_group_image_counts(groups: list[tuple[str, list[Path]]], images_per_group: int, allow_total_shortage: int = 0) -> None:
     min_images_per_group = min(MIN_IMAGES_PER_GROUP, images_per_group)
-    shortage = 0
     for name, imgs in groups:
         count = len(imgs)
         if count < min_images_per_group:
             raise SystemExit(f"图片不足：分组 {name} 至少需要 {min_images_per_group} 张，当前 {count} 张")
-        if count > images_per_group:
-            continue
-        shortage += max(0, images_per_group - count)
-    if allow_total_shortage == 0 and shortage > 0:
-        raise SystemExit(f"图片不足：当前分组总缺少 {shortage} 张，未允许缺图")
-    if allow_total_shortage > 0 and shortage > allow_total_shortage:
-        raise SystemExit(f"图片不足：当前分组总缺少 {shortage} 张，超过允许值 {allow_total_shortage}")
 
 
 def flat_sources(base: Path, count: int, images_per_group: int, allow_total_shortage: int = 0) -> list[tuple[str, list[Path]]]:
@@ -290,7 +282,6 @@ def plan_group_batches(
 ) -> tuple[list[dict], int]:
     if not groups:
         raise SystemExit("没有可用的买家秀分组")
-    verify_group_image_counts(groups, images_per_group, allow_total_shortage)
 
     buckets = split_records_by_date(records)
     total_needed = sum(len(items) for items in buckets.values())
@@ -305,6 +296,7 @@ def plan_group_batches(
         chosen_groups = ordered_groups[cursor: cursor + count]
         if len(chosen_groups) != count:
             raise SystemExit(f"分组不足：日期 {date_key} 需要 {count} 组，实际只剩 {len(chosen_groups)} 组")
+        verify_group_image_counts(chosen_groups, images_per_group, allow_total_shortage)
         batches.append({
             "date_key": date_key,
             "records": bucket_records,

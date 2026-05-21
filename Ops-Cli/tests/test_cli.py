@@ -330,6 +330,51 @@ def test_tmcs_bill_learn_json(monkeypatch) -> None:
     assert '"statement_bill_dynamic_list"' in result.stdout
 
 
+def test_tmcs_promotion_bill_help() -> None:
+    result = runner.invoke(app, ["tmcs", "promotion-bill", "--help"])
+
+    assert result.exit_code == 0
+    assert "download" in result.stdout
+    assert "learn" in result.stdout
+
+
+def test_tmcs_promotion_bill_download_json(monkeypatch) -> None:
+    def fake_run_tmcs_promotion_bill_download(**kwargs) -> CommandResponse:
+        return CommandResponse(
+            success=True,
+            platform="tmcs",
+            command="promotion-bill download",
+            data={"sources": [{"source": kwargs["source"]}], "downloaded_files": [], "failed": [], "dry_run": kwargs["dry_run"]},
+        )
+
+    monkeypatch.setattr("ops_cli.cli.run_tmcs_promotion_bill_download", fake_run_tmcs_promotion_bill_download)
+
+    result = runner.invoke(app, ["--json", "tmcs", "promotion-bill", "download", "--source", "zdx", "--last-month", "--dry-run"])
+
+    assert result.exit_code == 0
+    assert '"command": "promotion-bill download"' in result.stdout
+    assert '"source": "zdx"' in result.stdout
+    assert '"dry_run": true' in result.stdout
+
+
+def test_tmcs_promotion_bill_learn_json(monkeypatch) -> None:
+    def fake_learn_tmcs_promotion_bill(**kwargs) -> CommandResponse:
+        return CommandResponse(
+            success=True,
+            platform="tmcs",
+            command="promotion-bill learn",
+            data={"source": kwargs["source"], "template_path": "data/tmcs/promotion_bill_template.json"},
+        )
+
+    monkeypatch.setattr("ops_cli.cli.learn_tmcs_promotion_bill", fake_learn_tmcs_promotion_bill)
+
+    result = runner.invoke(app, ["--json", "tmcs", "promotion-bill", "learn", "--source", "all"])
+
+    assert result.exit_code == 0
+    assert '"command": "promotion-bill learn"' in result.stdout
+    assert '"source": "all"' in result.stdout
+
+
 def test_jst_order_label_json(monkeypatch) -> None:
     def fake_run_order_label(**kwargs) -> CommandResponse:
         return CommandResponse(
@@ -365,6 +410,32 @@ def test_jst_order_label_json_error(monkeypatch) -> None:
     assert result.exit_code == 1
     assert '"success": false' in result.stdout
     assert '"error": "缺少 JST_COOKIE"' in result.stdout
+
+
+def test_jst_order_remark_json(monkeypatch) -> None:
+    def fake_run_order_remark(**kwargs) -> CommandResponse:
+        return CommandResponse(
+            success=True,
+            platform="jst",
+            command="order remark",
+            data={
+                "mode": "dry-run",
+                "results": [{"order_no": kwargs["order_ids"][0], "status": "success", "o_id": "123"}],
+                "remark_text": kwargs["remark_text"],
+            },
+        )
+
+    monkeypatch.setattr("ops_cli.cli.run_jst_order_remark", fake_run_order_remark)
+
+    result = runner.invoke(
+        app,
+        ["--json", "jst", "order", "remark", "--order-id", "123456", "--remark-text", "测试备注"],
+    )
+
+    assert result.exit_code == 0
+    assert '"command": "order remark"' in result.stdout
+    assert '"status": "success"' in result.stdout
+    assert '"测试备注"' in result.stdout
 
 
 def test_jst_order_logistics_help() -> None:
