@@ -16,11 +16,13 @@ from ops_cli.platforms.tmcs.shared import TMCS_SITE
 from ops_cli.platforms.tmcs.shared import check_scene_or_fail
 from ops_cli.platforms.tmcs.shared import ensure_scene_assets
 from ops_cli.platforms.tmcs.shared import extract_export_task_id
+from ops_cli.platforms.tmcs.shared import filter_cookies_for_url
 from ops_cli.platforms.tmcs.shared import find_download_url
 from ops_cli.platforms.tmcs.shared import find_success_file_url_by_keywords
 from ops_cli.platforms.tmcs.shared import form_encode
 from ops_cli.platforms.tmcs.shared import gei_task_download_url
 from ops_cli.platforms.tmcs.shared import is_probably_excel
+from ops_cli.platforms.tmcs.shared import is_probable_auth_error
 from ops_cli.platforms.tmcs.shared import load_scene_or_fail
 from ops_cli.platforms.tmcs.shared import merge_cookie_header
 from ops_cli.platforms.tmcs.shared import parse_form_post_data
@@ -62,12 +64,29 @@ def _template_path() -> Path:
     return Path.cwd() / TEMPLATE_PATH
 
 
-def _sanitize_tmcs_headers(headers: dict[str, Any], cookies: list[dict[str, Any]] | None = None) -> dict[str, str]:
+def _sanitize_tmcs_headers(
+    headers: dict[str, Any],
+    cookies: list[dict[str, Any]] | None = None,
+    *,
+    target_url: str | None = None,
+) -> dict[str, str]:
     cleaned = sanitize_replay_headers(headers, [])
-    cookie_header = merge_cookie_header({}, cookies).get("cookie")
+    cookie_header = merge_cookie_header({}, filter_cookies_for_url(cookies, target_url or "")).get("cookie")
     if cookie_header:
         cleaned["cookie"] = cookie_header
     return cleaned
+
+
+def _request_headers(scene: dict[str, Any], target_url: str) -> dict[str, str]:
+    headers = sanitize_replay_headers(dict(scene.get("headers") or {}), [])
+    cookies = scene.get("cookies") or []
+    if cookies:
+        cookie_header = merge_cookie_header({}, filter_cookies_for_url(cookies, target_url)).get("cookie")
+        if cookie_header:
+            headers["cookie"] = cookie_header
+    elif scene.get("headers", {}).get("cookie"):
+        headers["cookie"] = str(scene["headers"]["cookie"])
+    return headers
 
 
 def _normalize_source(source: str) -> list[str]:
@@ -196,7 +215,12 @@ def _scene_to_template(scene: dict[str, Any]) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "url": scene.get("url"),
         "method": method,
-        "headers": _sanitize_tmcs_headers(scene.get("headers") or {}, scene.get("cookies") or []),
+        "headers": _sanitize_tmcs_headers(
+            scene.get("headers") or {},
+            scene.get("cookies") or [],
+            target_url=str(scene.get("url") or ""),
+        ),
+        "cookies": list(scene.get("cookies") or []),
     }
     if raw_json:
         payload["post_data_json"] = _parameterize_dates(raw_json)
@@ -228,7 +252,15 @@ def _load_template() -> dict[str, Any]:
     path = _template_path()
     if not path.exists():
         raise RuntimeError(f"未找到猫超推广账单模板：{path}。请先运行 `ops tmcs promotion-bill learn --source all`。")
-    return read_json(path)
+    template = read_json(path)
+    sources = template.get("sources") or {}
+    query_scene = template.get("download_query") or {}
+    if any("cookies" not in source for source in sources.values() if isinstance(source, dict)) or (
+        query_scene and "cookies" not in query_scene
+    ):
+        learn_promotion_bill(source=SOURCE_ALL, force=False)
+        template = read_json(path)
+    return template
 
 
 def _capture_primary_source(source: str, timeout: int) -> dict[str, Any] | None:
@@ -322,7 +354,20 @@ def learn_promotion_bill(*, source: str = SOURCE_ALL, force: bool = False, timeo
         except RuntimeError:
             query_scene = None
 
-    template_path = _write_template(sources=learned_sources, query_scene=query_scene)
+    existing_sources: dict[str, dict[str, Any]] = {}
+    if _template_path().exists():
+        try:
+            existing_template = read_json(_template_path())
+            existing_sources = {
+                str(key): value
+                for key, value in (existing_template.get("sources") or {}).items()
+                if isinstance(value, dict)
+            }
+        except Exception:
+            existing_sources = {}
+    existing_sources.update(learned_sources)
+
+    template_path = _write_template(sources=existing_sources, query_scene=query_scene)
     context_path = write_runtime_context(
         task_name="tmcs_promotion_bill_learn",
         status="success",
@@ -364,7 +409,7 @@ def _query_download_center_url(query_scene: dict[str, Any], source: str) -> str 
     _, payload, _ = tmcs_request(
         str(query_scene.get("method") or "POST"),
         str(query_scene.get("url") or ""),
-        headers=dict(query_scene.get("headers") or {}),
+        headers=_request_headers(query_scene, str(query_scene.get("url") or "")),
         json_body=json_body,
         data_body=data_body,
     )
@@ -405,7 +450,7 @@ def _download_source(
     json_body, data_body = _build_request_payload(scene, start, end)
     method = str(scene.get("method") or "POST").upper()
     url = str(scene.get("url") or "")
-    headers = dict(scene.get("headers") or {})
+    headers = _request_headers(scene, url)
     _, payload, content = tmcs_request(method, url, headers=headers, json_body=json_body, data_body=data_body)
 
     resolved_content: bytes | None = None
@@ -421,7 +466,7 @@ def _download_source(
             if task_id:
                 gei_url = gei_task_download_url(url, task_id)
                 for _ in range(12):
-                    _, nested_payload, nested_content = tmcs_download(gei_url, headers=headers)
+                    _, nested_payload, nested_content = tmcs_download(gei_url, headers=_request_headers(scene, gei_url))
                     if nested_content and _is_probably_spreadsheet(nested_content):
                         resolved_content = nested_content
                         break
@@ -459,43 +504,34 @@ def run_promotion_bill_download(
     dry_run: bool = False,
 ) -> CommandResponse:
     selected = _normalize_source(source)
-    template_warning = None
-    try:
-        template = _load_template()
-    except RuntimeError as exc:
-        if not dry_run:
-            raise
-        template_warning = str(exc)
-        template = {"defaults": {"output_dir": get_config().tmcs_bill_download_dir}, "sources": {}, "download_query": {}}
     begin, finish = _normalize_dates(start=start, end=end, last_month=last_month)
-    output_dir = Path(str((template.get("defaults") or {}).get("output_dir") or get_config().tmcs_bill_download_dir)).expanduser()
-
-    template_sources = template.get("sources") or {}
-    missing = [item for item in selected if item not in template_sources]
-    if missing and not dry_run:
-        raise RuntimeError(f"推广账单模板缺少来源：{','.join(missing)}。请先运行 `ops tmcs promotion-bill learn --source all`。")
-
-    scene_status: list[dict[str, Any]] = []
-    for item in selected:
-        scene_name = SOURCE_CONFIGS[item]["scene"]
-        try:
-            check = check_scene_or_fail(TMCS_SITE, scene_name, next_command="ops tmcs promotion-bill learn --source all")
-            scene_status.append({"source": item, "scene": scene_name, "status": check.get("status", "valid")})
-        except Exception as exc:
-            scene_status.append({"source": item, "scene": scene_name, "status": "warning", "warning": str(exc)})
-    if template_warning:
-        scene_status.append({"source": source, "scene": "promotion_bill_template", "status": "missing", "warning": template_warning})
-
-    sources_payload = [
-        {
-            "source": item,
-            "label": SOURCE_CONFIGS[item]["label"],
-            "scene": SOURCE_CONFIGS[item]["scene"],
-            "output_file": str(_source_file_path(output_dir, item, begin)),
-        }
-        for item in selected
-    ]
     if dry_run:
+        template_warning = None
+        try:
+            template = _load_template()
+        except RuntimeError as exc:
+            template_warning = str(exc)
+            template = {"defaults": {"output_dir": get_config().tmcs_bill_download_dir}, "sources": {}, "download_query": {}}
+        output_dir = Path(str((template.get("defaults") or {}).get("output_dir") or get_config().tmcs_bill_download_dir)).expanduser()
+        scene_status: list[dict[str, Any]] = []
+        for item in selected:
+            scene_name = SOURCE_CONFIGS[item]["scene"]
+            try:
+                check = check_scene_or_fail(TMCS_SITE, scene_name, next_command="ops tmcs promotion-bill learn --source all")
+                scene_status.append({"source": item, "scene": scene_name, "status": check.get("status", "valid")})
+            except Exception as exc:
+                scene_status.append({"source": item, "scene": scene_name, "status": "warning", "warning": str(exc)})
+        if template_warning:
+            scene_status.append({"source": source, "scene": "promotion_bill_template", "status": "missing", "warning": template_warning})
+        sources_payload = [
+            {
+                "source": item,
+                "label": SOURCE_CONFIGS[item]["label"],
+                "scene": SOURCE_CONFIGS[item]["scene"],
+                "output_file": str(_source_file_path(output_dir, item, begin)),
+            }
+            for item in selected
+        ]
         context_path = write_runtime_context(
             task_name="tmcs_promotion_bill_download_run",
             status="success",
@@ -519,23 +555,66 @@ def run_promotion_bill_download(
             },
         )
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    query_scene = template.get("download_query") or {}
-    downloaded_files: list[str] = []
-    failed: list[dict[str, str]] = []
-    for item in selected:
-        try:
-            path = _download_source(
-                source=item,
-                scene=template_sources[item],
-                query_scene=query_scene,
-                start=begin,
-                end=finish,
-                output_dir=output_dir,
-            )
-            downloaded_files.append(str(path))
-        except Exception as exc:
-            failed.append({"source": item, "label": SOURCE_CONFIGS[item]["label"], "error": str(exc)})
+    retried_for_auth = False
+    auth_refresh_applied = False
+    while True:
+        template = _load_template()
+        output_dir = Path(str((template.get("defaults") or {}).get("output_dir") or get_config().tmcs_bill_download_dir)).expanduser()
+        template_sources = template.get("sources") or {}
+        missing = [item for item in selected if item not in template_sources]
+        if missing:
+            learn_promotion_bill(source=SOURCE_ALL if len(missing) > 1 else missing[0], force=False)
+            template = _load_template()
+            template_sources = template.get("sources") or {}
+            missing = [item for item in selected if item not in template_sources]
+            if missing:
+                raise RuntimeError(f"推广账单模板缺少来源：{','.join(missing)}。请先运行 `ops tmcs promotion-bill learn --source all`。")
+
+        scene_status: list[dict[str, Any]] = []
+        for item in selected:
+            scene_name = SOURCE_CONFIGS[item]["scene"]
+            try:
+                check = check_scene_or_fail(TMCS_SITE, scene_name, next_command="ops tmcs promotion-bill learn --source all")
+                scene_status.append({"source": item, "scene": scene_name, "status": check.get("status", "valid")})
+            except Exception as exc:
+                scene_status.append({"source": item, "scene": scene_name, "status": "warning", "warning": str(exc)})
+        if auth_refresh_applied:
+            scene_status.append({"source": source, "scene": "promotion_bill_template", "status": "refreshed", "warning": "检测到推广账单鉴权失败，已自动强制刷新 SessionHub scenes 并重试一次。"})
+
+        sources_payload = [
+            {
+                "source": item,
+                "label": SOURCE_CONFIGS[item]["label"],
+                "scene": SOURCE_CONFIGS[item]["scene"],
+                "output_file": str(_source_file_path(output_dir, item, begin)),
+            }
+            for item in selected
+        ]
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        query_scene = template.get("download_query") or {}
+        downloaded_files: list[str] = []
+        failed: list[dict[str, str]] = []
+        for item in selected:
+            try:
+                path = _download_source(
+                    source=item,
+                    scene=template_sources[item],
+                    query_scene=query_scene,
+                    start=begin,
+                    end=finish,
+                    output_dir=output_dir,
+                )
+                downloaded_files.append(str(path))
+            except Exception as exc:
+                failed.append({"source": item, "label": SOURCE_CONFIGS[item]["label"], "error": str(exc)})
+
+        if not downloaded_files and failed and not retried_for_auth and is_probable_auth_error(failed[0]["error"]):
+            learn_promotion_bill(source=source, force=True)
+            retried_for_auth = True
+            auth_refresh_applied = True
+            continue
+        break
 
     context_path = write_runtime_context(
         task_name="tmcs_promotion_bill_download_run",

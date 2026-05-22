@@ -108,6 +108,15 @@ ops --json jst shop-goods import --file /path/to/jst_shop_goods_import.xlsx --sh
 
 推广账单默认下载上一个自然月；智多星按页面文件中心返回 `.xlsx`，万象台按阿里妈妈页面真实返回保留 `.csv`，统一落到 `~/Downloads`，再由业务编排层读取。
 
+猫超账单下载当前正式链路：
+
+- `statement_bill_list_for_supplier`：抓账单列表页真实 `GET /statementBill/v3/listForSupplier`
+- `statement_bill_dynamic_list`：触发 `对账单列表` 导出任务
+- `download_file_query`：查询下载中心文件
+- `tmcs bill download --last-month` 会把查询窗口顺延 3 天，兼容平台跨月出账
+- `tmcs bill download --download-statement-list --last-month` 会同时下载 `HDB*.xlsx` 和 `对账单列表.xlsx`
+- scene 失效时会自动进入 SessionHub 恢复流程：拉起 `9222` 专用浏览器、等待手动登录、自动刷新页面并执行固定动作后继续跑
+
 ## 环境变量
 
 复制 `.env.example` 为 `.env`。
@@ -135,6 +144,7 @@ TMCS_BILL_DOWNLOAD_DIR=/Users/dasheng/Downloads
 - 主浏览器用途：先人工或通过 Codex Chrome 插件走一遍真实页面，确认真实按钮、字段、下载链路；如果该浏览器暴露了可接管入口，再用于捕获真实请求。
 - `9222` 浏览器：只给 SessionHub 长期沉淀 scene、复检和稳定执行。
 - 禁止把“只用 9222 的单浏览器 capture”叫做双浏览器学习。
+- 正式业务执行尽量走 `run.py -> Ops-Cli -> SessionHub 9222`；只有链路缺口学习时才临时用主浏览器补真实接口信息，再回灌给 `9222` scene。
 
 ## 9222 机制
 

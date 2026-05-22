@@ -10,6 +10,7 @@ from openpyxl import load_workbook
 
 from ops_cli.config import get_config
 from ops_cli.output import CommandResponse
+from ops_cli.platforms.auth_shared import is_probable_auth_error
 from ops_cli.runtime_context import write_runtime_context
 
 from ops_cli.platforms.tmcs.shared import TMCS_PRODUCT_EXPORT_FILENAME
@@ -435,38 +436,53 @@ def run_product_sync(
     use_local_only: bool = False,
     force_refresh: bool = False,
 ) -> CommandResponse:
-    template = _load_template()
-    defaults = template.get("defaults") or {}
-    import_path = Path(str(defaults.get("import_path") or get_config().tmcs_product_import_path)).expanduser()
-    latest_path = Path(str(defaults.get("latest_path") or get_config().tmcs_product_latest_path)).expanduser()
-    jst_path = Path(str(defaults.get("jst_path") or get_config().jst_product_source_path)).expanduser()
+    retried_for_auth = False
+    auth_refresh_applied = False
+    while True:
+        template = _load_template()
+        defaults = template.get("defaults") or {}
+        import_path = Path(str(defaults.get("import_path") or get_config().tmcs_product_import_path)).expanduser()
+        latest_path = Path(str(defaults.get("latest_path") or get_config().tmcs_product_latest_path)).expanduser()
+        jst_path = Path(str(defaults.get("jst_path") or get_config().jst_product_source_path)).expanduser()
 
-    search_scene_data = template.get("search") or {}
-    export_scene_data = template.get("export") or load_scene_or_fail(TMCS_SITE, TMCS_PRODUCT_EXPORT_SCENE, next_command="ops tmcs product learn")
-    if not use_local_only:
-        check_scene_or_fail(TMCS_SITE, TMCS_PRODUCT_SEARCH_SCENE, next_command="ops tmcs product learn")
+        search_scene_data = template.get("search") or {}
+        export_scene_data = template.get("export") or load_scene_or_fail(TMCS_SITE, TMCS_PRODUCT_EXPORT_SCENE, next_command="ops tmcs product learn")
+        if not use_local_only:
+            check_scene_or_fail(TMCS_SITE, TMCS_PRODUCT_SEARCH_SCENE, next_command="ops tmcs product learn")
 
-    should_auto_download = (not use_local_only) and (force_refresh or not import_path.exists())
-    if should_auto_download and not dry_run:
-        download_meta = {
-            "used_backend_export": True,
-            "downloaded": True,
-            **_download_goods_export(export_scene=export_scene_data, search_scene=search_scene_data, destination=import_path),
-        }
-    else:
-        download_meta = {
-            "used_backend_export": should_auto_download,
-            "downloaded": False,
-            "auto_download_reason": (
-                "use_local_only"
-                if use_local_only
-                else "existing_import_file"
-                if import_path.exists() and not force_refresh
-                else "dry_run"
-                if dry_run
-                else "not_needed"
-            ),
-        }
+        should_auto_download = (not use_local_only) and (force_refresh or not import_path.exists())
+        if should_auto_download and not dry_run:
+            try:
+                download_meta = {
+                    "used_backend_export": True,
+                    "downloaded": True,
+                    **_download_goods_export(export_scene=export_scene_data, search_scene=search_scene_data, destination=import_path),
+                }
+            except RuntimeError as exc:
+                if not retried_for_auth and is_probable_auth_error(exc):
+                    learn_product_sync(force=True)
+                    retried_for_auth = True
+                    auth_refresh_applied = True
+                    continue
+                raise
+        else:
+            download_meta = {
+                "used_backend_export": should_auto_download,
+                "downloaded": False,
+                "auto_download_reason": (
+                    "use_local_only"
+                    if use_local_only
+                    else "existing_import_file"
+                    if import_path.exists() and not force_refresh
+                    else "dry_run"
+                    if dry_run
+                    else "not_needed"
+                ),
+            }
+        break
+
+    if auth_refresh_applied:
+        download_meta["auth_refresh_applied"] = True
 
     if not import_path.exists():
         raise RuntimeError(f"未找到猫超导入文件：{import_path}")

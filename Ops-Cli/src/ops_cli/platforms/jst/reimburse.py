@@ -13,6 +13,7 @@ from urllib.parse import quote
 
 from ops_cli.integrations.sessionhub import get_scene_manager
 from ops_cli.output import CommandResponse
+from ops_cli.platforms.auth_shared import is_probable_auth_error
 from ops_cli.platforms.jst.order import DEFAULT_JST_ORDER_PATH
 from ops_cli.platforms.jst.order import JST_ORDER_SCENE
 from ops_cli.platforms.jst.order import JST_SITE
@@ -296,35 +297,47 @@ def run_order_reimburse_workorder(
 
     principal = _money(principal_total)
     payout = _money(payout_total)
-    session = get_scene_manager().ensure_scene(JST_SITE, JST_ORDER_SCENE)
-    identity = _session_identity(session)
-    order_identity = _resolve_order_identity(outer_order_id)
-    existing_detail = _select_created_workorder(
-        session,
-        identity,
-        order_identity["online_order_id"],
-        order_identity["internal_order_id"],
-        outer_order_id,
-    )
-    existing = has_existing_workorder(existing_detail)
-    upload_url = ""
-    payload: dict[str, Any] | None = None
-    result: dict[str, Any] | None = None
-    submitted = False
-    if execute and not existing:
-        sts = _get_sts_token(session, identity)
-        upload_url = _upload_workbook_to_oss(sts, workbook_path)
-        payload = build_reimburse_workorder_payload(
-            internal_order_id=order_identity["internal_order_id"],
-            online_order_id=order_identity["online_order_id"],
-            principal_total=principal,
-            payout_total=payout,
-            product_code=product_code,
-            item_name=order_identity.get("item_name") or product_name or product_code,
-            upload_url=upload_url,
-        )
-        result = _post_workorder(session, payload)
-        submitted = True
+    retried_for_auth = False
+    auth_refresh_applied = False
+    while True:
+        try:
+            session = get_scene_manager().ensure_scene(JST_SITE, JST_ORDER_SCENE)
+            identity = _session_identity(session)
+            order_identity = _resolve_order_identity(outer_order_id)
+            existing_detail = _select_created_workorder(
+                session,
+                identity,
+                order_identity["online_order_id"],
+                order_identity["internal_order_id"],
+                outer_order_id,
+            )
+            existing = has_existing_workorder(existing_detail)
+            upload_url = ""
+            payload: dict[str, Any] | None = None
+            result: dict[str, Any] | None = None
+            submitted = False
+            if execute and not existing:
+                sts = _get_sts_token(session, identity)
+                upload_url = _upload_workbook_to_oss(sts, workbook_path)
+                payload = build_reimburse_workorder_payload(
+                    internal_order_id=order_identity["internal_order_id"],
+                    online_order_id=order_identity["online_order_id"],
+                    principal_total=principal,
+                    payout_total=payout,
+                    product_code=product_code,
+                    item_name=order_identity.get("item_name") or product_name or product_code,
+                    upload_url=upload_url,
+                )
+                result = _post_workorder(session, payload)
+                submitted = True
+            break
+        except Exception as exc:
+            if not retried_for_auth and is_probable_auth_error(exc):
+                get_scene_manager().capture_scene(JST_SITE, JST_ORDER_SCENE)
+                retried_for_auth = True
+                auth_refresh_applied = True
+                continue
+            raise
 
     outputs = {
         "outer_order_id": outer_order_id,
@@ -345,6 +358,8 @@ def run_order_reimburse_workorder(
         "payload": payload or {},
         "result": result or {},
     }
+    if auth_refresh_applied:
+        outputs["auth_refresh_applied"] = True
     context_path = write_runtime_context(
         task_name="jst_order_reimburse_run",
         status="success",

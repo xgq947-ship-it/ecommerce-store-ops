@@ -4,6 +4,16 @@ from typing import Any
 from ops_cli.integrations.sessionhub import get_scene_manager
 from ops_cli.output import CommandResponse
 
+AUTH_RECOVERY_MARKERS = (
+    "401",
+    "unauthorized",
+    "forbidden",
+    "登录",
+    "session",
+    "cookie",
+    "token",
+)
+
 
 @dataclass(frozen=True)
 class AuthTarget:
@@ -19,6 +29,13 @@ def _response(command: str, target: AuthTarget, data: dict[str, Any]) -> Command
         command=command,
         data=data,
     )
+
+
+def is_probable_auth_error(error: object) -> bool:
+    text = str(error).strip().lower()
+    if not text:
+        return False
+    return any(marker in text for marker in AUTH_RECOVERY_MARKERS)
 
 
 def check_auth_target(target: AuthTarget) -> CommandResponse:

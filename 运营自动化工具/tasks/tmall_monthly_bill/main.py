@@ -6,10 +6,9 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
-import shutil
 import subprocess
 import sys
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
@@ -18,6 +17,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from core.config_loader import get_path  # noqa: E402
+from clients.ops_cli_client import run_ops_json  # noqa: E402
+from tasks.tmall_monthly_bill.services.profit_summary_service import render_profit_summary  # noqa: E402
+from tasks.tmall_monthly_bill.services.promotion_service import write_promotion_sheet  # noqa: E402
+from tasks.tmall_monthly_bill.services.reconciliation_service import write_reconciliation_sheet  # noqa: E402
 
 DEFAULT_WORK_DIR = get_path("maochao_work_dir")
 DEFAULT_BILL_DIR = get_path("tmall_bill_download_dir")
@@ -46,7 +49,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--table2-file", default=str(DEFAULT_TABLE2_FILE), help="聚水潭商品资料路径；也兼容传文件名")
     parser.add_argument("--downloader-script", default=str(INTERNAL_DOWNLOADER_SCRIPT), help="没有 HDB 数据源时自动调用的猫超账单下载脚本；默认使用当前项目内部实现")
     parser.add_argument("--skip-auto-download", action="store_true", help="没有 HDB 数据源时不自动下载")
-    parser.add_argument("--dry-run", action="store_true", help="只预览，不生成文件、不移动 HDB")
+    parser.add_argument("--dry-run", action="store_true", help="只预览，不生成文件")
     return parser.parse_args()
 
 
@@ -187,6 +190,14 @@ def infer_bill_date_range(bill_files: list[Path]) -> tuple[str, str]:
     return min(starts), max(ends)
 
 
+def should_use_last_month_download(start: str, end: str, today: date | None = None) -> bool:
+    today = today or date.today()
+    first_day_this_month = today.replace(day=1)
+    last_day_previous_month = first_day_this_month - timedelta(days=1)
+    first_day_previous_month = last_day_previous_month.replace(day=1)
+    return start == first_day_previous_month.isoformat() and end == last_day_previous_month.isoformat()
+
+
 def statement_list_candidates(statement_path: Path) -> list[Path]:
     parent = statement_path.parent
     stem = statement_path.stem
@@ -250,10 +261,12 @@ def statement_matches_periods(source, statement_path: Path, bill_period_set: set
         period_index = statement_header.index("账单周期")
     except ValueError:
         return False
-    return any(
-        normalize_period(row[period_index] if period_index < len(row) else None) in bill_period_set
+    matched_periods = {
+        normalize_period(row[period_index] if period_index < len(row) else None)
         for row in statement_rows
-    )
+    }
+    matched_periods.discard(None)
+    return bill_period_set.issubset(matched_periods)
 
 
 def resolve_statement_list(source, statement_path: Path, bill_periods: list[str]) -> Path:
@@ -316,14 +329,14 @@ def auto_download_statement_list_if_needed(
     command = [
         choose_downloader_python(),
         str(downloader_script),
-        "--start",
-        start,
-        "--end",
-        end,
         "--output-dir",
         str(bill_dir),
         "--download-statement-list",
     ]
+    if should_use_last_month_download(start, end):
+        command.append("--last-month")
+    else:
+        command.extend(["--start", start, "--end", end])
     result = subprocess.run(command, text=True, capture_output=True)
     if result.returncode != 0:
         raise SystemExit(
@@ -351,25 +364,74 @@ def auto_download_statement_list_if_needed(
     }
 
 
-def unique_archive_target(archive_dir: Path, source_path: Path) -> Path:
-    target = archive_dir / source_path.name
-    if not target.exists():
-        return target
-    stem = source_path.stem
-    suffix = source_path.suffix
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    candidate = archive_dir / f"{stem}-{stamp}{suffix}"
-    counter = 1
-    while candidate.exists():
-        candidate = archive_dir / f"{stem}-{stamp}-{counter}{suffix}"
-        counter += 1
-    return candidate
+def _ops_data(payload: dict) -> dict:
+    data = payload.get("data")
+    return data if isinstance(data, dict) else payload
 
 
-def archive_statement_list(statement_path: Path, archive_dir: Path) -> Path:
-    target = unique_archive_target(archive_dir, statement_path)
-    shutil.move(str(statement_path), str(target))
-    return target
+def _promotion_bill_patterns(source_name: str, month_tag: str) -> list[str]:
+    if source_name == "zdx":
+        return [
+            f"智多星推广账单_{month_tag}.*",
+            "场景智投资金账户明细导出*.xlsx",
+            "*智多星*.xlsx",
+            "*zdx*.xlsx",
+        ]
+    if source_name == "wxt":
+        return [
+            f"万象台推广账单_{month_tag}.*",
+            f"万相台推广账单_{month_tag}.*",
+            "商品利润*.csv",
+            "*万象台*.csv",
+            "*万相台*.csv",
+            "*wxt*.csv",
+            "*adbrain*.csv",
+        ]
+    return [f"*{source_name}*"]
+
+
+def find_existing_promotion_bill(source_name: str, start: str, search_dir: Path) -> Path | None:
+    month_tag = start[:7]
+    candidates: dict[Path, None] = {}
+    for pattern in _promotion_bill_patterns(source_name, month_tag):
+        for path in search_dir.glob(pattern):
+            if path.is_file() and not path.name.startswith("~$"):
+                candidates[path.resolve()] = None
+    if not candidates:
+        return None
+    return sorted(candidates, key=lambda path: path.stat().st_mtime, reverse=True)[0]
+
+
+def download_promotion_bill(source_name: str, start: str, end: str, bill_dir: Path) -> Path:
+    existing = find_existing_promotion_bill(source_name, start, bill_dir)
+    try:
+        payload = run_ops_json(
+            [
+                "--json",
+                "tmcs",
+                "promotion-bill",
+                "download",
+                "--source",
+                source_name,
+                "--start",
+                start,
+                "--end",
+                end,
+            ]
+        )
+        data = _ops_data(payload)
+        downloaded_files = data.get("downloaded_files") or []
+        if downloaded_files:
+            path = Path(str(downloaded_files[0])).expanduser().resolve()
+            if path.exists():
+                return path
+        if existing is not None:
+            return existing
+        raise SystemExit(f"{source_name} 推广账单 CLI 未返回下载文件")
+    except Exception as exc:
+        if existing is not None:
+            return existing
+        raise SystemExit(f"{source_name} 推广账单下载失败：{exc}") from exc
 
 
 def compare_invoice_amount(source, statement_path: Path, invoice_header: list[str], invoice_rows: list[list[object]], bill_files: list[Path]) -> dict:
@@ -467,13 +529,21 @@ def process(args: argparse.Namespace) -> dict:
     )
     cost_header, cost_rows = source.build_cost_sheet(enriched_header, cargo_rows)
     invoice_check = compare_invoice_amount(source, statement_path, invoice_header, invoice_rows, bill_files)
-    statement_archive_path = None
+    promotion_paths: dict[str, str] = {}
 
     if not args.dry_run:
         archive_dir.mkdir(parents=True, exist_ok=True)
         source.ensure_clean_target(output_path)
         if stale_output_path != output_path and stale_output_path.exists():
             source.ensure_clean_target(stale_output_path)
+
+        start, end = infer_bill_date_range(bill_files)
+        wxt_path = download_promotion_bill("wxt", start, end, bill_dir)
+        zdx_path = download_promotion_bill("zdx", start, end, bill_dir)
+        promotion_paths = {
+            "wxt": str(wxt_path),
+            "zdx": str(zdx_path),
+        }
 
         workbook = source.Workbook()
         workbook.remove(workbook.active)
@@ -483,9 +553,11 @@ def process(args: argparse.Namespace) -> dict:
         source.append_sheet(workbook, "账扣表格", raw_header, charge_rows)
         source.append_sheet(workbook, "开票表", invoice_header, invoice_rows)
         source.append_sheet(workbook, "成本表", cost_header, cost_rows)
+        write_reconciliation_sheet(workbook, Path(invoice_check["statement_list"]))
+        write_promotion_sheet(workbook, "万相台推广数据表格", wxt_path)
+        write_promotion_sheet(workbook, "智多星推广数据表格", zdx_path)
+        render_profit_summary(workbook, month_label=f"{month}月份利润表")
         workbook.save(output_path)
-        source.archive_bill_files(bill_files, archive_dir)
-        statement_archive_path = archive_statement_list(Path(invoice_check["statement_list"]), archive_dir)
 
     return {
         "task": "process_maochao_bills",
@@ -497,10 +569,11 @@ def process(args: argparse.Namespace) -> dict:
         "archive_dir": str(archive_dir),
         "bill_file_count": len(bill_files),
         "bill_files": [str(path) for path in bill_files],
-        "bill_files_moved": not args.dry_run,
+        "bill_files_moved": False,
         **statement_download_info,
-        "statement_list_moved": bool(statement_archive_path),
-        "statement_list_archive_path": str(statement_archive_path) if statement_archive_path else None,
+        "statement_list_moved": False,
+        "statement_list_archive_path": None,
+        "promotion_bill_files": promotion_paths,
         **auto_download_info,
         "main_sheet": main_sheet_name,
         "total_rows": len(raw_rows),

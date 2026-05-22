@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urljoin
+from urllib.parse import urlparse
 
 from ops_cli.config import get_config
 from ops_cli.integrations.sessionhub import get_scene_manager
@@ -18,6 +19,7 @@ TMCS_PRODUCT_EXPORT_SCENE = "maochao_item_export"
 TMCS_INVENTORY_SEARCH_SCENE = "maochao_inventory_search"
 TMCS_INVENTORY_EXPORT_SCENE = "maochao_inventory_export"
 TMCS_INVENTORY_ADJUST_SCENE = "maochao_inventory_adjust"
+TMCS_BILL_LIST_SCENE = "statement_bill_list_for_supplier"
 TMCS_BILL_EXPORT_SCENE = "statement_bill_dynamic_list"
 TMCS_BILL_QUERY_SCENE = "download_file_query"
 TMCS_BILL_LIST_URL = "https://wdksettlement.hemaos.com/statementBill/v3/listForSupplier"
@@ -32,6 +34,15 @@ NOISY_HEADERS = {
     "host",
     "cookie",
 }
+AUTH_RECOVERY_MARKERS = (
+    "401",
+    "unauthorized",
+    "forbidden",
+    "登录",
+    "session",
+    "cookie",
+    "token",
+)
 
 
 def sessionhub_root() -> Path:
@@ -63,9 +74,33 @@ def merge_cookie_header(headers: dict[str, Any], cookies: list[dict[str, Any]] |
     return merged
 
 
+def filter_cookies_for_url(cookies: list[dict[str, Any]] | None, url: str) -> list[dict[str, Any]]:
+    if not cookies:
+        return []
+    host = (urlparse(url).hostname or "").lower()
+    if not host:
+        return []
+    matched: list[dict[str, Any]] = []
+    for cookie in cookies:
+        domain = str(cookie.get("domain") or "").strip().lower()
+        if not domain:
+            continue
+        normalized = domain.lstrip(".")
+        if host == normalized or host.endswith(f".{normalized}"):
+            matched.append(cookie)
+    return matched
+
+
 def sanitize_replay_headers(headers: dict[str, Any], cookies: list[dict[str, Any]] | None = None) -> dict[str, str]:
     merged = merge_cookie_header(headers, cookies)
     return {key: value for key, value in merged.items() if key.lower() not in NOISY_HEADERS}
+
+
+def is_probable_auth_error(error: object) -> bool:
+    text = str(error).strip().lower()
+    if not text:
+        return False
+    return any(marker in text for marker in AUTH_RECOVERY_MARKERS)
 
 
 def load_scene_or_fail(site: str, scene: str, *, next_command: str) -> dict[str, Any]:
@@ -95,7 +130,7 @@ def ensure_scene_assets(
     scene_path = scene_store_path(site, scene)
     if force:
         manager.capture_scene(site, scene)
-    elif not scene_path.exists():
+    else:
         manager.ensure_scene(site, scene)
     check = manager.check_scene(site, scene)
     if check.get("status") != "valid":

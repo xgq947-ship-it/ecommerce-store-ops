@@ -59,8 +59,20 @@
 - 商品列表真实导出与长期主表同步
 - 一盘货库存查询
 - 库存导出 / 调整
-- 月账单下载
+- 月账单下载：`HDB` 明细、`对账单列表`
 - 推广账单下载：智多星、万象台；智多星保留 `.xlsx`，万象台按页面真实返回保留 `.csv`
+
+当前 TMCS 账单链路依赖的 scene：
+
+- `statement_bill_list_for_supplier`
+- `statement_bill_dynamic_list`
+- `download_file_query`
+
+其中：
+
+- `statement_bill_list_for_supplier` 负责 HDB 列表查询
+- `statement_bill_dynamic_list` 负责触发 `对账单列表` 导出任务
+- `download_file_query` 负责查询下载中心文件
 
 ## 浏览器能力
 

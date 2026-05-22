@@ -20,12 +20,14 @@ def _write_template(tmp_path, sources=None):
                         "url": "https://example.com/zdx/export",
                         "method": "POST",
                         "headers": {"cookie": "a=b"},
+                        "cookies": [],
                         "post_data_json": {"start": "__START_DATE__", "end": "__END_DATE__"},
                     },
                     "wxt": {
                         "url": "https://example.com/wxt/export",
                         "method": "POST",
                         "headers": {"cookie": "a=b"},
+                        "cookies": [],
                         "post_data_form": {"tradeStart": "__START_DATE__", "tradeEnd": "__END_DATE__"},
                     },
                 },
@@ -33,6 +35,7 @@ def _write_template(tmp_path, sources=None):
                     "url": "https://example.com/query",
                     "method": "POST",
                     "headers": {"cookie": "a=b"},
+                    "cookies": [],
                     "post_data_json": {"parameters": [{"pageIndex": 1, "pageSize": 20}]},
                 },
             },
@@ -88,7 +91,7 @@ def test_download_dry_run_lists_selected_source(tmp_path, monkeypatch) -> None:
 
 def test_download_supports_direct_file_url(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
-    _write_template(tmp_path, sources={"zdx": {"url": "https://example.com/export", "method": "POST", "headers": {}, "post_data_json": {}}})
+    _write_template(tmp_path, sources={"zdx": {"url": "https://example.com/export", "method": "POST", "headers": {}, "cookies": [], "post_data_json": {}}})
     monkeypatch.setattr(promotion_bill, "check_scene_or_fail", lambda *args, **kwargs: {"status": "valid"})
     monkeypatch.setattr(promotion_bill, "tmcs_request", lambda *args, **kwargs: (200, {"data": {"downloadUrl": "https://oss.example.com/zdx.xlsx"}}, b""))
     monkeypatch.setattr(promotion_bill, "tmcs_download", lambda *args, **kwargs: (200, None, b"PK\x03\x04direct"))
@@ -101,7 +104,7 @@ def test_download_supports_direct_file_url(tmp_path, monkeypatch) -> None:
 
 def test_download_supports_task_id(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
-    _write_template(tmp_path, sources={"wxt": {"url": "https://example.com/export", "method": "POST", "headers": {}, "post_data_form": {}}})
+    _write_template(tmp_path, sources={"wxt": {"url": "https://example.com/export", "method": "POST", "headers": {}, "cookies": [], "post_data_form": {}}})
     monkeypatch.setattr(promotion_bill, "check_scene_or_fail", lambda *args, **kwargs: {"status": "valid"})
     monkeypatch.setattr(promotion_bill, "tmcs_request", lambda *args, **kwargs: (200, {"data": {"taskId": "task-1"}}, b""))
     monkeypatch.setattr(promotion_bill, "tmcs_download", lambda *args, **kwargs: (200, None, "交易日期,收入,支出\n2026-04-01,0,0\n".encode()))
@@ -114,7 +117,7 @@ def test_download_supports_task_id(tmp_path, monkeypatch) -> None:
 
 def test_download_retries_gei_task_until_excel_ready(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
-    _write_template(tmp_path, sources={"zdx": {"url": "https://example.com/export", "method": "POST", "headers": {}, "post_data_json": {}}})
+    _write_template(tmp_path, sources={"zdx": {"url": "https://example.com/export", "method": "POST", "headers": {}, "cookies": [], "post_data_json": {}}})
     monkeypatch.setattr(promotion_bill, "check_scene_or_fail", lambda *args, **kwargs: {"status": "valid"})
     monkeypatch.setattr(promotion_bill.time, "sleep", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(promotion_bill, "tmcs_request", lambda *args, **kwargs: (200, {"data": {"taskId": "task-1"}}, b""))
@@ -134,7 +137,7 @@ def test_download_retries_gei_task_until_excel_ready(tmp_path, monkeypatch) -> N
 
 def test_download_supports_download_center_poll(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
-    _write_template(tmp_path, sources={"zdx": {"url": "https://example.com/export", "method": "POST", "headers": {}, "post_data_json": {}}})
+    _write_template(tmp_path, sources={"zdx": {"url": "https://example.com/export", "method": "POST", "headers": {}, "cookies": [], "post_data_json": {}}})
     monkeypatch.setattr(promotion_bill, "check_scene_or_fail", lambda *args, **kwargs: {"status": "valid"})
     monkeypatch.setattr(promotion_bill.time, "sleep", lambda *_args, **_kwargs: None)
 
@@ -155,9 +158,41 @@ def test_download_supports_download_center_poll(tmp_path, monkeypatch) -> None:
 
 def test_download_fails_when_all_selected_sources_fail(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
-    _write_template(tmp_path, sources={"zdx": {"url": "https://example.com/export", "method": "POST", "headers": {}, "post_data_json": {}}})
+    _write_template(tmp_path, sources={"zdx": {"url": "https://example.com/export", "method": "POST", "headers": {}, "cookies": [], "post_data_json": {}}})
     monkeypatch.setattr(promotion_bill, "check_scene_or_fail", lambda *args, **kwargs: {"status": "valid"})
     monkeypatch.setattr(promotion_bill, "tmcs_request", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")))
 
     with pytest.raises(RuntimeError, match="推广账单下载全部失败"):
         promotion_bill.run_promotion_bill_download(source="zdx", start="2026-04-01", end="2026-04-30")
+
+
+def test_learn_single_source_merges_existing_template_sources(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _write_template(
+        tmp_path,
+        sources={
+            "wxt": {
+                "url": "https://example.com/wxt/export",
+                "method": "POST",
+                "headers": {},
+                "cookies": [],
+                "post_data_form": {},
+            }
+        },
+    )
+
+    fake_scene = {
+        "url": "https://example.com/zdx/export",
+        "method": "POST",
+        "headers": {},
+        "cookies": [],
+        "post_data_json": {"start": "__START_DATE__", "end": "__END_DATE__"},
+    }
+    monkeypatch.setattr(promotion_bill, "_capture_primary_source", lambda *args, **kwargs: fake_scene)
+    monkeypatch.setattr(promotion_bill, "ensure_scene_assets", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("skip")))
+    monkeypatch.setattr(promotion_bill, "load_scene_or_fail", lambda *args, **kwargs: fake_scene)
+
+    promotion_bill.learn_promotion_bill(source="zdx")
+
+    template = json.loads((tmp_path / "data" / "tmcs" / "promotion_bill_template.json").read_text(encoding="utf-8"))
+    assert set(template["sources"]) == {"wxt", "zdx"}

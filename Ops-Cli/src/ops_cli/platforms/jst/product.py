@@ -11,6 +11,7 @@ from openpyxl import Workbook, load_workbook
 from ops_cli.config import get_config
 from ops_cli.integrations.sessionhub import get_scene_manager
 from ops_cli.output import CommandResponse
+from ops_cli.platforms.auth_shared import is_probable_auth_error
 from ops_cli.runtime_context import write_runtime_context
 from ops_cli.utils.http import build_client
 
@@ -283,40 +284,52 @@ def run_product_sync(
     use_local_only: bool = False,
     keep_brands: list[str] | None = None,
 ) -> CommandResponse:
-    template = _load_template()
-    scene_path = _scene_store_path(JST_SITE, PRODUCT_SCENE)
-    if not scene_path.exists():
-        raise RuntimeError(f"未找到商品导出 scene：{scene_path}。请先运行 `ops jst product learn`。")
-    scene_check = _scene_is_valid(_read_json(scene_path))
-    if not scene_check["valid"]:
-        raise RuntimeError(f"商品导出 scene 不可用：{scene_check['reason']}。请先运行 `ops jst product learn`。")
-
-    defaults = template.get("defaults") or {}
-    source_path = Path(str(defaults.get("source_path") or get_config().jst_product_source_path)).expanduser()
     keep_brand_values = _resolve_keep_brands(keep_brands)
     keep_brand_set = set(keep_brand_values)
 
-    download_meta: dict[str, Any] = {"used_backend_export": not use_local_only, "downloaded": False}
-    if use_local_only:
-        if not source_path.is_file():
-            raise RuntimeError(f"源文件不存在：{source_path}")
-    elif not dry_run:
-        try:
-            download_meta = {
-                "used_backend_export": True,
-                "downloaded": True,
-                **_download_source(template, source_path),
-            }
-        except RuntimeError as exc:
-            if source_path.is_file() and "导出文件下载失败" in str(exc):
+    retried_for_auth = False
+    auth_refresh_applied = False
+    while True:
+        template = _load_template()
+        scene_path = _scene_store_path(JST_SITE, PRODUCT_SCENE)
+        if not scene_path.exists():
+            raise RuntimeError(f"未找到商品导出 scene：{scene_path}。请先运行 `ops jst product learn`。")
+        scene_check = _scene_is_valid(_read_json(scene_path))
+        if not scene_check["valid"]:
+            raise RuntimeError(f"商品导出 scene 不可用：{scene_check['reason']}。请先运行 `ops jst product learn`。")
+
+        defaults = template.get("defaults") or {}
+        source_path = Path(str(defaults.get("source_path") or get_config().jst_product_source_path)).expanduser()
+        download_meta: dict[str, Any] = {"used_backend_export": not use_local_only, "downloaded": False}
+        if use_local_only:
+            if not source_path.is_file():
+                raise RuntimeError(f"源文件不存在：{source_path}")
+        elif not dry_run:
+            try:
                 download_meta = {
                     "used_backend_export": True,
-                    "downloaded": False,
-                    "fallback": "expired_or_invalid_export_url_used_local_source",
-                    "warning": str(exc),
+                    "downloaded": True,
+                    **_download_source(template, source_path),
                 }
-            else:
-                raise
+            except RuntimeError as exc:
+                if not retried_for_auth and is_probable_auth_error(exc):
+                    learn_jst_product_sync(force=True)
+                    retried_for_auth = True
+                    auth_refresh_applied = True
+                    continue
+                if source_path.is_file() and "导出文件下载失败" in str(exc):
+                    download_meta = {
+                        "used_backend_export": True,
+                        "downloaded": False,
+                        "fallback": "expired_or_invalid_export_url_used_local_source",
+                        "warning": str(exc),
+                    }
+                else:
+                    raise
+        break
+
+    if auth_refresh_applied:
+        download_meta["auth_refresh_applied"] = True
 
     if dry_run:
         context_path = write_runtime_context(

@@ -195,3 +195,53 @@ def test_run_product_sync_falls_back_to_local_source(monkeypatch, tmp_path) -> N
 
     assert result.data["downloaded"] is False
     assert result.data["fallback"] == "expired_or_invalid_export_url_used_local_source"
+
+
+def test_run_product_sync_retries_after_auth_refresh(monkeypatch, tmp_path) -> None:
+    from openpyxl import Workbook
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data" / "jst").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "runtime" / "context").mkdir(parents=True, exist_ok=True)
+
+    source = tmp_path / "聚水潭商品资料（最新）.xlsx"
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "商品资料"
+    ws.append(["商品编码", "品牌", "名称"])
+    ws.append(["A1", "奥克斯", "商品A"])
+    wb.save(source)
+
+    (tmp_path / "data" / "jst" / "product_sync_template.json").write_text(
+        json.dumps(
+            {
+                "method": "POST",
+                "url": "https://example.com",
+                "headers": {"Cookie": "a=b"},
+                "post_data_json": {"data": 160160444},
+                "defaults": {"source_path": str(source), "keep_brands": ["奥克斯"], "target_name": "聚水潭商品资料（最新）.xlsx"},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(product, "_scene_store_path", lambda site, scene: tmp_path / "scene.json")
+    (tmp_path / "scene.json").write_text(json.dumps({"headers": {"Cookie": "a=b"}, "method": "POST", "url": "https://example.com"}), encoding="utf-8")
+    monkeypatch.setattr(product, "_scene_is_valid", lambda scene_data: {"valid": True, "reason": "ok"})
+    refresh_calls = {"count": 0}
+    monkeypatch.setattr(product, "learn_jst_product_sync", lambda force=False: refresh_calls.__setitem__("count", refresh_calls["count"] + 1))
+
+    attempts = {"count": 0}
+
+    def fake_download_source(template, source_path):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise RuntimeError("401 Unauthorized")
+        return {"download_url": "https://example.com/file.xlsx"}
+
+    monkeypatch.setattr(product, "_download_source", fake_download_source)
+
+    result = product.run_product_sync()
+
+    assert result.data["auth_refresh_applied"] is True
+    assert refresh_calls["count"] == 1

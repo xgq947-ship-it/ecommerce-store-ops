@@ -30,6 +30,15 @@ def test_run_reimburse_dry_run_checks_existing_without_upload(monkeypatch, tmp_p
     workbook = tmp_path / "登记表.xlsx"
     workbook.write_bytes(b"fake")
 
+    class FakeManager:
+        def ensure_scene(self, site, scene):
+            return {"headers": {"cookie": "u_id=1; u_co_id=2"}, "url": "https://www.erp321.com/app/order/order/list.aspx"}
+
+        def capture_scene(self, site, scene):
+            return {"headers": {"cookie": "u_id=1; u_co_id=2"}, "url": "https://www.erp321.com/app/order/order/list.aspx"}
+
+    monkeypatch.setattr(reimburse, "get_scene_manager", lambda: FakeManager())
+
     monkeypatch.setattr(
         reimburse,
         "_resolve_order_identity",
@@ -67,3 +76,53 @@ def test_run_reimburse_dry_run_checks_existing_without_upload(monkeypatch, tmp_p
     assert response.data["internal_order_id"] == "10001"
     assert response.data["online_order_id"] == "LP10001"
     assert Path(response.data["context_path"]).exists()
+
+
+def test_run_reimburse_retries_after_auth_refresh(monkeypatch, tmp_path: Path) -> None:
+    workbook = tmp_path / "登记表.xlsx"
+    workbook.write_bytes(b"fake")
+
+    class FakeManager:
+        def __init__(self) -> None:
+            self.capture_calls = 0
+
+        def ensure_scene(self, site, scene):
+            return {"headers": {"cookie": "u_id=1; u_co_id=2"}, "url": "https://www.erp321.com/app/order/order/list.aspx"}
+
+        def capture_scene(self, site, scene):
+            self.capture_calls += 1
+            return {"headers": {"cookie": "u_id=1; u_co_id=2"}, "url": "https://www.erp321.com/app/order/order/list.aspx"}
+
+    manager = FakeManager()
+    monkeypatch.setattr(reimburse, "get_scene_manager", lambda: manager)
+
+    attempts = {"count": 0}
+
+    def fake_resolve(outer_order_id):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise RuntimeError("401 Unauthorized")
+        return {
+            "outer_order_id": outer_order_id,
+            "matched_filter": "outer_so_id",
+            "internal_order_id": "10001",
+            "online_order_id": "LP10001",
+            "item_name": "智能足部护理仪",
+        }
+
+    monkeypatch.setattr(reimburse, "_resolve_order_identity", fake_resolve)
+    monkeypatch.setattr(reimburse, "_select_created_workorder", lambda *args, **kwargs: {})
+
+    response = reimburse.run_order_reimburse_workorder(
+        outer_order_id="TB123",
+        principal_total="965",
+        payout_total="140",
+        product_code="SUZBHLYZHH1001",
+        product_name="登记表商品名",
+        workbook_file=str(workbook),
+        execute=False,
+    )
+
+    assert response.data["submitted"] is False
+    assert response.data["auth_refresh_applied"] is True
+    assert manager.capture_calls == 1

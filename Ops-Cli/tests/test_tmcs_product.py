@@ -135,3 +135,53 @@ def test_tmcs_product_sync_force_refresh_downloads(tmp_path, monkeypatch) -> Non
     assert result.data["used_backend_export"] is True
     assert result.data["downloaded"] is True
     assert result.data["new_rows"] == 1
+
+
+def test_tmcs_product_sync_retries_after_auth_refresh(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data" / "tmcs").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "runtime" / "context").mkdir(parents=True, exist_ok=True)
+
+    import_path = tmp_path / "猫超商品列表导出.xlsx"
+    latest_path = tmp_path / "猫超商品列表导出 (最新）.xlsx"
+    jst_path = tmp_path / "聚水潭商品资料（最新）.xlsx"
+    _build_goods_workbook(latest_path, [["A1", "OLD-1", "老商品"]])
+    _build_goods_workbook(import_path, [["A1", "OLD-1", "老商品"]])
+    _build_jst_workbook(jst_path, [["SKU-B1", "奥克斯", "匹配商品"]])
+
+    (tmp_path / "data" / "tmcs" / "product_sync_template.json").write_text(
+        json.dumps({"defaults": {"import_path": str(import_path), "latest_path": str(latest_path), "jst_path": str(jst_path)}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(product, "check_scene_or_fail", lambda *args, **kwargs: {"status": "valid"})
+    monkeypatch.setattr(
+        product,
+        "load_scene_or_fail",
+        lambda *args, **kwargs: {
+            "headers": {"cookie": "a=b"},
+            "method": "POST",
+            "url": "https://example.com",
+            "post_data_form": {"_scm_token_": "x", "query": "{}"},
+        },
+    )
+    refresh_calls = {"count": 0}
+    monkeypatch.setattr(product, "learn_product_sync", lambda force=False: refresh_calls.__setitem__("count", refresh_calls["count"] + 1))
+
+    attempts = {"count": 0}
+
+    def fake_download_goods_export(**kwargs):
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise RuntimeError("401 Unauthorized")
+        destination = kwargs["destination"]
+        _build_goods_workbook(destination, [["A1", "OLD-1", "老商品"], ["B1", "BAR-B1", "新商品"]])
+        return {"export_task_id": "task-1", "download_size": len(destination.read_bytes())}
+
+    monkeypatch.setattr(product, "_download_goods_export", fake_download_goods_export)
+
+    result = product.run_product_sync(force_refresh=True)
+
+    assert result.data["downloaded"] is True
+    assert result.data["auth_refresh_applied"] is True
+    assert refresh_calls["count"] == 1

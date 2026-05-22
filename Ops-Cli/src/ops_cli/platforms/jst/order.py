@@ -14,6 +14,7 @@ import httpx
 from ops_cli.config import get_config
 from ops_cli.integrations.sessionhub import get_scene_manager
 from ops_cli.output import CommandResponse
+from ops_cli.platforms.auth_shared import is_probable_auth_error
 from ops_cli.runtime_context import write_runtime_context
 from ops_cli.utils.http import build_client
 
@@ -847,44 +848,55 @@ def run_order_label(
     remark_text: str,
 ) -> CommandResponse:
     orders, resolved_input = _normalize_orders(order_ids=order_ids, input_path=input_path, limit=limit)
-    session = get_scene_manager().ensure_scene(JST_SITE, JST_ORDER_SCENE)
-    headers = dict(session.get("headers") or {})
-    cookie = str(headers.get("Cookie") or headers.get("cookie") or "").strip()
-    if not cookie:
-        raise RuntimeError("SessionHub 已返回 session，但缺少 Cookie。请重新捕获聚水潭会话。")
-
-    url = str(session.get("url") or f"https://www.erp321.com{DEFAULT_JST_ORDER_PATH}").strip()
-    form_template = _extract_form_template(session)
     mode = "execute" if execute else "dry-run"
-    results: list[dict[str, Any]] = []
+    retried_for_auth = False
+    auth_refresh_applied = False
+    while True:
+        session = get_scene_manager().ensure_scene(JST_SITE, JST_ORDER_SCENE)
+        headers = dict(session.get("headers") or {})
+        cookie = str(headers.get("Cookie") or headers.get("cookie") or "").strip()
+        if not cookie:
+            raise RuntimeError("SessionHub 已返回 session，但缺少 Cookie。请重新捕获聚水潭会话。")
 
-    with build_client(follow_redirects=True) as client:
-        for order_no in orders:
-            try:
-                matched_o_ids = _query_order_o_ids(client, url, cookie, order_no, form_template)
-                if not matched_o_ids:
-                    results.append({"order_no": order_no, "status": "failed_not_found", "reason": "聚水潭未找到订单"})
-                    continue
-                if len(matched_o_ids) > 1:
-                    results.append(
-                        {
-                            "order_no": order_no,
-                            "status": "failed_multi",
-                            "reason": f"聚水潭返回 {len(matched_o_ids)} 条记录",
-                            "matched_o_ids": matched_o_ids,
-                        }
-                    )
-                    continue
+        url = str(session.get("url") or f"https://www.erp321.com{DEFAULT_JST_ORDER_PATH}").strip()
+        form_template = _extract_form_template(session)
+        results: list[dict[str, Any]] = []
 
-                o_id = matched_o_ids[0]
-                if execute:
-                    _append_remark(client, url, cookie, o_id, remark_text, form_template)
-                    _set_labels(client, url, cookie, o_id, labels, form_template)
-                results.append({"order_no": order_no, "status": "success", "o_id": o_id})
-            except httpx.HTTPError as exc:
-                results.append({"order_no": order_no, "status": "failed_request", "reason": str(exc)})
-            except Exception as exc:
-                results.append({"order_no": order_no, "status": "failed_error", "reason": str(exc)})
+        with build_client(follow_redirects=True) as client:
+            for order_no in orders:
+                try:
+                    matched_o_ids = _query_order_o_ids(client, url, cookie, order_no, form_template)
+                    if not matched_o_ids:
+                        results.append({"order_no": order_no, "status": "failed_not_found", "reason": "聚水潭未找到订单"})
+                        continue
+                    if len(matched_o_ids) > 1:
+                        results.append(
+                            {
+                                "order_no": order_no,
+                                "status": "failed_multi",
+                                "reason": f"聚水潭返回 {len(matched_o_ids)} 条记录",
+                                "matched_o_ids": matched_o_ids,
+                            }
+                        )
+                        continue
+
+                    o_id = matched_o_ids[0]
+                    if execute:
+                        _append_remark(client, url, cookie, o_id, remark_text, form_template)
+                        _set_labels(client, url, cookie, o_id, labels, form_template)
+                    results.append({"order_no": order_no, "status": "success", "o_id": o_id})
+                except httpx.HTTPError as exc:
+                    results.append({"order_no": order_no, "status": "failed_request", "reason": str(exc)})
+                except Exception as exc:
+                    results.append({"order_no": order_no, "status": "failed_error", "reason": str(exc)})
+
+        auth_failures = [row for row in results if row["status"] == "failed_request" and is_probable_auth_error(row.get("reason"))]
+        if auth_failures and not retried_for_auth and not any(row["status"] == "success" for row in results):
+            get_scene_manager().capture_scene(JST_SITE, JST_ORDER_SCENE)
+            retried_for_auth = True
+            auth_refresh_applied = True
+            continue
+        break
 
     failed_output = _write_failed_orders(results)
     success_count = sum(1 for row in results if row["status"] == "success")
@@ -909,6 +921,8 @@ def run_order_label(
         },
         "results": results,
     }
+    if auth_refresh_applied:
+        data["auth_refresh_applied"] = True
     if failed_output:
         data["failed_output"] = failed_output
 
@@ -934,43 +948,54 @@ def run_order_remark(
     if not remark_text.strip():
         raise RuntimeError("--remark-text 不能为空")
 
-    session = get_scene_manager().ensure_scene(JST_SITE, JST_ORDER_SCENE)
-    headers = dict(session.get("headers") or {})
-    cookie = str(headers.get("Cookie") or headers.get("cookie") or "").strip()
-    if not cookie:
-        raise RuntimeError("SessionHub 已返回 session，但缺少 Cookie。请重新捕获聚水潭会话。")
-
-    url = str(session.get("url") or f"https://www.erp321.com{DEFAULT_JST_ORDER_PATH}").strip()
-    form_template = _extract_form_template(session)
     mode = "execute" if execute else "dry-run"
-    results: list[dict[str, Any]] = []
+    retried_for_auth = False
+    auth_refresh_applied = False
+    while True:
+        session = get_scene_manager().ensure_scene(JST_SITE, JST_ORDER_SCENE)
+        headers = dict(session.get("headers") or {})
+        cookie = str(headers.get("Cookie") or headers.get("cookie") or "").strip()
+        if not cookie:
+            raise RuntimeError("SessionHub 已返回 session，但缺少 Cookie。请重新捕获聚水潭会话。")
 
-    with build_client(follow_redirects=True) as client:
-        for order_no in orders:
-            try:
-                matched_o_ids = _query_order_o_ids(client, url, cookie, order_no, form_template)
-                if not matched_o_ids:
-                    results.append({"order_no": order_no, "status": "failed_not_found", "reason": "聚水潭未找到订单"})
-                    continue
-                if len(matched_o_ids) > 1:
-                    results.append(
-                        {
-                            "order_no": order_no,
-                            "status": "failed_multi",
-                            "reason": f"聚水潭返回 {len(matched_o_ids)} 条记录",
-                            "matched_o_ids": matched_o_ids,
-                        }
-                    )
-                    continue
+        url = str(session.get("url") or f"https://www.erp321.com{DEFAULT_JST_ORDER_PATH}").strip()
+        form_template = _extract_form_template(session)
+        results: list[dict[str, Any]] = []
 
-                o_id = matched_o_ids[0]
-                if execute:
-                    _append_remark(client, url, cookie, o_id, remark_text, form_template)
-                results.append({"order_no": order_no, "status": "success", "o_id": o_id})
-            except httpx.HTTPError as exc:
-                results.append({"order_no": order_no, "status": "failed_request", "reason": str(exc)})
-            except Exception as exc:
-                results.append({"order_no": order_no, "status": "failed_error", "reason": str(exc)})
+        with build_client(follow_redirects=True) as client:
+            for order_no in orders:
+                try:
+                    matched_o_ids = _query_order_o_ids(client, url, cookie, order_no, form_template)
+                    if not matched_o_ids:
+                        results.append({"order_no": order_no, "status": "failed_not_found", "reason": "聚水潭未找到订单"})
+                        continue
+                    if len(matched_o_ids) > 1:
+                        results.append(
+                            {
+                                "order_no": order_no,
+                                "status": "failed_multi",
+                                "reason": f"聚水潭返回 {len(matched_o_ids)} 条记录",
+                                "matched_o_ids": matched_o_ids,
+                            }
+                        )
+                        continue
+
+                    o_id = matched_o_ids[0]
+                    if execute:
+                        _append_remark(client, url, cookie, o_id, remark_text, form_template)
+                    results.append({"order_no": order_no, "status": "success", "o_id": o_id})
+                except httpx.HTTPError as exc:
+                    results.append({"order_no": order_no, "status": "failed_request", "reason": str(exc)})
+                except Exception as exc:
+                    results.append({"order_no": order_no, "status": "failed_error", "reason": str(exc)})
+
+        auth_failures = [row for row in results if row["status"] == "failed_request" and is_probable_auth_error(row.get("reason"))]
+        if auth_failures and not retried_for_auth and not any(row["status"] == "success" for row in results):
+            get_scene_manager().capture_scene(JST_SITE, JST_ORDER_SCENE)
+            retried_for_auth = True
+            auth_refresh_applied = True
+            continue
+        break
 
     failed_output = _write_failed_orders(results, prefix="jst_remark_failed_orders")
     success_count = sum(1 for row in results if row["status"] == "success")
@@ -994,6 +1019,8 @@ def run_order_remark(
         },
         "results": results,
     }
+    if auth_refresh_applied:
+        data["auth_refresh_applied"] = True
     if failed_output:
         data["failed_output"] = failed_output
 

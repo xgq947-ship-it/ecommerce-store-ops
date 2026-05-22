@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import shutil
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -471,14 +470,6 @@ def ensure_clean_target(path: Path) -> None:
         path.unlink()
 
 
-def archive_bill_files(bill_files: list[Path], archive_dir: Path) -> None:
-    archive_dir.mkdir(parents=True, exist_ok=True)
-    for source_path in bill_files:
-        target_path = archive_dir / source_path.name
-        ensure_clean_target(target_path)
-        shutil.move(str(source_path), str(target_path))
-
-
 def process(folder: Path, table1_file_name: str, table2_file_name: str) -> Path:
     bill_files = get_bill_files(folder)
     table1_path = folder / table1_file_name
@@ -520,7 +511,6 @@ def process(folder: Path, table1_file_name: str, table2_file_name: str) -> Path:
     append_sheet(workbook, "开票表", invoice_header, invoice_rows)
     append_sheet(workbook, "成本表", cost_header, cost_rows)
     workbook.save(output_path)
-    archive_bill_files(bill_files, archive_dir)
 
     print(f"输出文件: {output_path.name}")
     print(f"归档目录: {archive_dir}")

@@ -149,16 +149,17 @@ ops tmcs auth capture
 职责：
 
 - `learn_tmcs_bill_download()`
-  - 校验并沉淀 `statement_bill_dynamic_list` / `download_file_query` scene 模板
+  - 校验并沉淀 `statement_bill_list_for_supplier` / `statement_bill_dynamic_list` / `download_file_query` scene 模板
   - 写 `data/tmcs/bill_download_template.json`
   - 写 `runtime/context/tmcs_bill_learn_*.json`
 
 - `run_tmcs_bill_download()`
   - 支持 `--start/--end` 或 `--last-month`
   - `--last-month` 查询窗口顺延 3 天，避免平台月末账单延迟生成导致漏下载
-  - 触发账单导出任务
+  - 先通过 `statement_bill_list_for_supplier` 拉 HDB 列表
   - 下载 HDB 账单文件到 `~/Downloads`
-  - 可选下载 `对账单列表.xlsx`
+  - 通过 `statement_bill_dynamic_list` 触发 `对账单列表.xlsx` 导出任务
+  - 按 `taskId -> GEI 下载地址 -> 下载中心兜底` 获取 `对账单列表.xlsx`
   - 写 `runtime/context/tmcs_bill_download_run_*.json`
 
 第一阶段不做：
