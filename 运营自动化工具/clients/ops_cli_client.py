@@ -41,8 +41,9 @@ def _command_prefix() -> list[str]:
 
 
 def run_ops_json(args: list[str]) -> dict[str, Any]:
+    json_args = args if "--json" in args else ["--json", *args]
     completed = subprocess.run(
-        [*_command_prefix(), *args],
+        [*_command_prefix(), *json_args],
         cwd=ops_cli_root(),
         text=True,
         capture_output=True,
@@ -50,14 +51,20 @@ def run_ops_json(args: list[str]) -> dict[str, Any]:
     )
     stdout = completed.stdout.strip()
     stderr = completed.stderr.strip()
-    if completed.returncode != 0:
-        raise RuntimeError(stderr or stdout or "Ops-Cli 执行失败")
     if not stdout:
-        raise RuntimeError("Ops-Cli 未返回输出")
+        raise RuntimeError("Ops-Cli 未返回 JSON 输出")
     try:
         payload = json.loads(stdout)
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"Ops-Cli 返回非 JSON：{stdout[:500]}") from exc
+    if completed.returncode != 0:
+        if isinstance(payload, dict):
+            data = payload.get("data") or {}
+            raise RuntimeError(
+                f"Ops-Cli 执行失败 [{data.get('error_code', 'UNKNOWN')}]："
+                f"{data.get('error', '未知错误')}；context={data.get('context_path', '')}"
+            )
+        raise RuntimeError("Ops-Cli 执行失败且响应结构不是对象")
     if isinstance(payload, dict):
         payload["_ops_stdout"] = stdout
         payload["_ops_stderr"] = stderr

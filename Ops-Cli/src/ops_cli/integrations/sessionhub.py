@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from ops_cli.capabilities import current_capability_execution
 from ops_cli.config import get_config
 
 
@@ -23,8 +24,12 @@ class SessionHubSceneManager:
         return self.root
 
     def capture_hint(self, site: str, scene: str) -> str:
-        root = self._ensure_import_path()
-        return f"cd {root}\npython3 sessionhub.py capture {site} --scene {scene}"
+        self._ensure_import_path()
+        platform = "tmcs" if site == "tmall_chaoshi" else "jst"
+        return (
+            f"ops --json --interactive-login {platform} auth ensure "
+            f"# scene={scene}；业务命令会按需捕获对应 scene"
+        )
 
     def check_scene(self, site: str, scene: str) -> dict[str, Any]:
         self._ensure_import_path()
@@ -56,6 +61,10 @@ class SessionHubSceneManager:
             session["source"] = "sessionhub"
             return session
 
+        execution = current_capability_execution()
+        if execution is not None and not execution.allow_recovery:
+            execution.recovery.mark_required()
+            auto_capture = False
         if not auto_capture:
             reason = (checked.get("check_result") or {}).get("reason") or "session 不可用"
             raise SessionHubIntegrationError(
@@ -80,6 +89,8 @@ class SessionHubSceneManager:
 
         session = public_session(checked)
         session["source"] = "sessionhub"
+        if execution is not None:
+            execution.recovery.mark_refreshed(scene)
         return session
 
     def capture_scene(self, site: str, scene: str) -> dict[str, Any]:
@@ -87,6 +98,12 @@ class SessionHubSceneManager:
         from scene.api import public_session  # type: ignore
         from scene.token_capture import CaptureError, capture_session  # type: ignore
 
+        execution = current_capability_execution()
+        if execution is not None and not execution.allow_recovery:
+            execution.recovery.mark_required()
+            raise SessionHubIntegrationError(
+                f"{site}/{scene} 需要交互捕获，当前执行模式禁止自动登录恢复。\n可执行：\n{self.capture_hint(site, scene)}"
+            )
         try:
             capture_session(site, scene, wait_seconds=self.wait_seconds)
             checked = self.check_scene(site, scene)
@@ -101,6 +118,8 @@ class SessionHubSceneManager:
 
         session = public_session(checked)
         session["source"] = "sessionhub"
+        if execution is not None:
+            execution.recovery.mark_refreshed(scene)
         return session
 
 

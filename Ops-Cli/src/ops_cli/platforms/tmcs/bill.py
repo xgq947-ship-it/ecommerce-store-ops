@@ -6,6 +6,10 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from ops_cli.capabilities import current_capability_execution
+from ops_cli.capabilities import mark_scene_refreshed
+from ops_cli.capabilities import recovery_must_fail_fast
+from ops_cli.capabilities import require_interactive_recovery
 from ops_cli.config import get_config
 from ops_cli.output import CommandResponse
 from ops_cli.runtime_context import write_runtime_context
@@ -119,7 +123,7 @@ def _write_template(*, list_scene: dict[str, Any], export_scene: dict[str, Any],
     return path
 
 
-def _load_template() -> dict[str, Any]:
+def _load_template(*, allow_refresh: bool = True) -> dict[str, Any]:
     path = _template_path()
     if not path.exists():
         raise RuntimeError(f"未找到猫超账单下载模板：{path}。请先运行 `ops tmcs bill learn`。")
@@ -133,7 +137,11 @@ def _load_template() -> dict[str, Any]:
         and download_query
         and ("cookies" not in bill_list or "cookies" not in statement_export or "cookies" not in download_query)
     ):
-        learn_bill_download(force=False)
+        execution = current_capability_execution()
+        if allow_refresh and (execution is None or not execution.dry_run):
+            learn_bill_download(force=False)
+        else:
+            return template
         template = read_json(path)
     return template
 
@@ -417,13 +425,15 @@ def run_bill_download(
     begin, finish, query_finish = _normalize_dates(start=start, end=end, last_month=last_month)
 
     if dry_run:
-        template = _load_template()
+        template = _load_template(allow_refresh=False)
         output_dir = Path(str((template.get("defaults") or {}).get("output_dir") or get_config().tmcs_bill_download_dir)).expanduser()
         scene_warnings: list[str] = []
         for scene_name in (TMCS_BILL_LIST_SCENE, TMCS_BILL_EXPORT_SCENE, TMCS_BILL_QUERY_SCENE):
             try:
                 check_scene_or_fail(TMCS_SITE, scene_name, next_command="ops tmcs bill learn")
             except RuntimeError as exc:
+                if recovery_must_fail_fast():
+                    raise
                 scene_warnings.append(str(exc))
         context_path = write_runtime_context(
             task_name="tmcs_bill_download_run",
@@ -479,6 +489,8 @@ def run_bill_download(
             try:
                 check_scene_or_fail(TMCS_SITE, scene_name, next_command="ops tmcs bill learn")
             except RuntimeError as exc:
+                if recovery_must_fail_fast():
+                    raise
                 scene_warnings.append(str(exc))
         if auth_refresh_applied:
             scene_warnings.append("检测到账单下载鉴权失败，已自动强制刷新 SessionHub scenes 并重试一次。")
@@ -520,14 +532,18 @@ def run_bill_download(
         except Exception as exc:
             last_error = exc
             if not retried_for_auth and is_probable_auth_error(exc):
+                require_interactive_recovery(TMCS_BILL_LIST_SCENE)
                 learn_bill_download(force=True)
+                mark_scene_refreshed(TMCS_BILL_LIST_SCENE)
                 retried_for_auth = True
                 auth_refresh_applied = True
                 continue
             raise
 
         if failed and not retried_for_auth and is_probable_auth_error(failed[0]["error"]):
+            require_interactive_recovery(TMCS_BILL_LIST_SCENE)
             learn_bill_download(force=True)
+            mark_scene_refreshed(TMCS_BILL_LIST_SCENE)
             retried_for_auth = True
             auth_refresh_applied = True
             continue

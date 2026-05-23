@@ -21,6 +21,12 @@
 - `python3 run.py ...`
 - `ops --json ...`
 
+## 平台响应规则
+
+- skill 只读取 `ops --json` stdout 的结构化响应，使用 `data.error_code`、`data.context_path` 与 `data.session_recovery`。
+- stderr 只记录登录等待与浏览器恢复诊断，不作为业务判断条件。
+- 交互登录恢复由 `Ops-Cli` 使用 `9222` 完成；skill 不自行拉起浏览器或捕获 session。
+
 ## 同步要求
 
 每次改动 skill，都要同步：

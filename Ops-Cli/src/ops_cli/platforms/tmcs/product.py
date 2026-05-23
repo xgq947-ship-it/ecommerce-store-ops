@@ -8,6 +8,8 @@ from typing import Any
 
 from openpyxl import load_workbook
 
+from ops_cli.capabilities import mark_scene_refreshed
+from ops_cli.capabilities import require_interactive_recovery
 from ops_cli.config import get_config
 from ops_cli.output import CommandResponse
 from ops_cli.platforms.auth_shared import is_probable_auth_error
@@ -460,7 +462,9 @@ def run_product_sync(
                 }
             except RuntimeError as exc:
                 if not retried_for_auth and is_probable_auth_error(exc):
+                    require_interactive_recovery(TMCS_PRODUCT_EXPORT_SCENE)
                     learn_product_sync(force=True)
+                    mark_scene_refreshed(TMCS_PRODUCT_EXPORT_SCENE)
                     retried_for_auth = True
                     auth_refresh_applied = True
                     continue

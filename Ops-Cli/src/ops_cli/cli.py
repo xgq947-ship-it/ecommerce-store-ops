@@ -1,11 +1,12 @@
-import json
 from datetime import datetime
 from typing import Any, Callable
 
 import typer
 
 from ops_cli.browser import check_browser_port
+from ops_cli.capabilities import capability_for_command
 from ops_cli.config import get_config
+from ops_cli.execution import capability_failure_response, run_capability
 from ops_cli.logger import log_command, setup_logger
 from ops_cli.output import CommandResponse, emit_response
 from ops_cli.platforms.jst.auth import check_auth as jst_check_auth
@@ -81,20 +82,31 @@ def _execute(
     command_name: str,
     params: dict[str, Any],
     handler: Callable[[], CommandResponse],
+    force_json: bool = False,
 ) -> None:
     setup_logger()
     get_config()
     started_at = datetime.now().isoformat(timespec="seconds")
+    command_parts = command_name.split()
+    platform = command_parts[1]
+    command = " ".join(command_parts[2:])
+    spec = capability_for_command(platform, command)
+    interactive_login = (ctx.obj or {}).get("interactive_login")
     try:
-        response = handler()
-    except Exception as exc:
-        response = CommandResponse(
-            success=False,
-            platform=command_name.split()[1],
-            command=" ".join(command_name.split()[2:]),
-            data={"error": str(exc)},
+        response = run_capability(
+            spec=spec,
+            params=params,
+            handler=handler,
+            interactive_login=interactive_login,
         )
-        emit_response(response, as_json=_get_json_flag(ctx))
+    except Exception as exc:
+        response = capability_failure_response(
+            spec=spec,
+            params=params,
+            exc=exc,
+            interactive_login=interactive_login,
+        )
+        emit_response(response, as_json=_get_json_flag(ctx) or force_json)
         log_command(
             {
                 "timestamp": started_at,
@@ -105,7 +117,7 @@ def _execute(
         )
         raise typer.Exit(code=1)
 
-    emit_response(response, as_json=_get_json_flag(ctx))
+    emit_response(response, as_json=_get_json_flag(ctx) or force_json)
     log_command(
         {
             "timestamp": started_at,
@@ -120,8 +132,13 @@ def _execute(
 def main_callback(
     ctx: typer.Context,
     json_output: bool = typer.Option(False, "--json", help="Output JSON."),
+    interactive_login: bool | None = typer.Option(
+        None,
+        "--interactive-login/--no-interactive-login",
+        help="Override terminal detection for SessionHub login recovery.",
+    ),
 ) -> None:
-    ctx.obj = {"json_output": json_output}
+    ctx.obj = {"json_output": json_output, "interactive_login": interactive_login}
 
 
 @browser_app.command("check")
@@ -593,22 +610,23 @@ def tmcs_stock_query(
     warehouse_code: str = typer.Option("mc_aokesi_suolong", "--warehouse-code", help="TMCS merchant warehouse code."),
     output: str = typer.Option("json", "--output", help="Output format. Currently only json is supported."),
 ) -> None:
-    setup_logger()
-    get_config()
-    started_at = datetime.now().isoformat(timespec="seconds")
-    command_name = "ops tmcs stock query"
-    params = {"item_ids": item_ids, "warehouse_code": warehouse_code, "output": output}
-    try:
+    def handler() -> CommandResponse:
         if output.lower() != "json":
             raise RuntimeError("tmcs stock query 当前仅支持 --output json。")
-        rows = query_tmcs_stock(item_ids=item_ids, warehouse_code=warehouse_code)
-        typer.echo(json.dumps(rows, ensure_ascii=False, indent=2))
-        log_command({"timestamp": started_at, "command": command_name, "params": params, "result": rows})
-    except Exception as exc:
-        error = {"success": False, "platform": "tmcs", "command": "stock query", "data": {"error": str(exc)}}
-        typer.echo(json.dumps(error, ensure_ascii=False, indent=2), err=True)
-        log_command({"timestamp": started_at, "command": command_name, "params": params, "result": error})
-        raise typer.Exit(code=1)
+        return CommandResponse(
+            success=True,
+            platform="tmcs",
+            command="stock query",
+            data={"rows": query_tmcs_stock(item_ids=item_ids, warehouse_code=warehouse_code)},
+        )
+
+    _execute(
+        ctx,
+        command_name="ops tmcs stock query",
+        params={"item_ids": item_ids, "warehouse_code": warehouse_code, "output": output},
+        handler=handler,
+        force_json=True,
+    )
 
 
 @tmcs_bill_app.command("download")

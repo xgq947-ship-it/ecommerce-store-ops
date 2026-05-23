@@ -22,18 +22,28 @@ ops --json browser check --port 9222
 
 ## 推荐恢复方式
 
-先确认端口：
+只检查状态，不触发登录恢复：
 
 ```bash
 ops --json browser check --port 9222
+ops --json tmcs auth check
+ops --json jst auth check
 ```
 
-再执行对应平台命令：
+在交互终端触发登录恢复：
 
 ```bash
-ops --json tmcs auth ensure
-ops --json jst auth ensure
+ops --json --interactive-login tmcs auth ensure
+ops --json --interactive-login jst auth ensure
 ```
+
+正式业务命令无需预先调用 `auth ensure`；scene 失效时 capability runner 会按同样流程恢复，并只重试业务操作一次。
+
+## 非交互行为
+
+- `--dry-run` 与 `auth check` 不启动浏览器、不等待登录。
+- 定时任务、retry queue 或 `--no-interactive-login` 遇到失效 session 时立即返回 `AUTH_REQUIRED`。
+- `--json` stdout 始终只有结构化结果；登录提示与恢复进度输出到 stderr。
 
 ## 当前兼容路径
 
@@ -43,4 +53,4 @@ ops --json jst auth ensure
 /Users/dasheng/Desktop/电商Brain/02-运营店铺/Ops-Cli/sessionhub
 ```
 
-这只是会话资产目录，不代表平台逻辑仍归业务项目。
+该目录中的代码和 scene 配置归 `Ops-Cli` 版本管理；`data/cookies`、`data/sessions` 与 `logs` 不进入 Git。

@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 from ops_cli.config import get_config
 from ops_cli.integrations.sessionhub import get_scene_manager
 from ops_cli.output import CommandResponse
+from ops_cli.platforms.jst.shared import ensure_scene_file_ready
 from ops_cli.runtime_context import write_runtime_context
 from ops_cli.utils.http import build_client
 
@@ -379,11 +380,15 @@ def run_yesterday_profit() -> CommandResponse:
     selected_store = get_config().jst_order_stats_store or STORE_NAME
     template = _load_template()
     scene_path = _scene_store_path(JST_SITE, PROFIT_SCENE)
-    if not scene_path.exists():
-        raise RuntimeError(f"未找到利润 scene：{scene_path}。请先运行 `ops jst profit learn`。")
-    scene_check = _scene_is_valid(_read_json(scene_path))
-    if not scene_check["valid"]:
-        raise RuntimeError(f"利润 scene 不可用：{scene_check['reason']}。请先运行 `ops jst profit learn`。")
+    ensure_scene_file_ready(
+        scene_path=scene_path,
+        read_scene=_read_json,
+        validate_scene=_scene_is_valid,
+        refresh_scene=learn_jst_profit_scene,
+        next_command="ops jst profit learn",
+        missing_label="利润 scene",
+        invalid_label="利润 scene",
+    )
 
     payload = _apply_payload_overrides(template, target_date=target_date, store=selected_store)
     headers = dict(template.get("headers") or {})

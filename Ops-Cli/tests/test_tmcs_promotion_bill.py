@@ -156,6 +156,31 @@ def test_download_supports_download_center_poll(tmp_path, monkeypatch) -> None:
     assert result.data["downloaded_files"][0].endswith(".xlsx")
 
 
+def test_download_surfaces_business_auth_failure_before_polling(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(promotion_bill.time, "sleep", lambda *_args, **_kwargs: None)
+    scene = {"url": "https://example.com/export", "method": "POST", "headers": {}, "cookies": [], "post_data_json": {}}
+    query_scene = {"url": "https://example.com/query", "method": "POST", "headers": {}, "cookies": [], "post_data_json": {}}
+    monkeypatch.setattr(
+        promotion_bill,
+        "tmcs_request",
+        lambda *args, **kwargs: (
+            200,
+            {"success": False, "errorCode": "PL_GEI_U00001", "errorMessage": "登录会话失效，尝试重新登录"},
+            b'{"success":false}',
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="登录会话失效"):
+        promotion_bill._download_source(
+            source="zdx",
+            scene=scene,
+            query_scene=query_scene,
+            start=date(2026, 4, 1),
+            end=date(2026, 4, 30),
+            output_dir=tmp_path,
+        )
+
+
 def test_download_fails_when_all_selected_sources_fail(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     _write_template(tmp_path, sources={"zdx": {"url": "https://example.com/export", "method": "POST", "headers": {}, "cookies": [], "post_data_json": {}}})
@@ -196,3 +221,19 @@ def test_learn_single_source_merges_existing_template_sources(tmp_path, monkeypa
 
     template = json.loads((tmp_path / "data" / "tmcs" / "promotion_bill_template.json").read_text(encoding="utf-8"))
     assert set(template["sources"]) == {"wxt", "zdx"}
+
+
+def test_forced_learn_does_not_fall_back_to_stale_scene(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    _write_template(tmp_path)
+    stale_scene = {"url": "https://example.com/stale", "method": "POST", "headers": {}, "cookies": []}
+    monkeypatch.setattr(promotion_bill, "_capture_primary_source", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        promotion_bill,
+        "ensure_scene_assets",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("capture failed")),
+    )
+    monkeypatch.setattr(promotion_bill, "load_scene_or_fail", lambda *args, **kwargs: stale_scene)
+
+    with pytest.raises(RuntimeError, match="capture failed"):
+        promotion_bill.learn_promotion_bill(source="zdx", force=True)

@@ -1,5 +1,9 @@
+import json
+
+import pytest
 from typer.testing import CliRunner
 
+from ops_cli.capabilities import current_capability_execution
 from ops_cli.cli import app
 from ops_cli.output import CommandResponse
 
@@ -90,8 +94,12 @@ def test_tmcs_stock_query_json(monkeypatch) -> None:
     )
 
     assert result.exit_code == 0
-    assert result.stdout.strip().startswith("[")
-    assert '"platform_item_id": "1052534376394"' in result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["success"] is True
+    assert payload["command"] == "stock query"
+    assert payload["data"]["rows"][0]["platform_item_id"] == "1052534376394"
+    assert payload["data"]["capability_id"] == "tmcs.stock.query"
+    assert payload["data"]["session_recovery"]["retry_count"] == 0
 
 
 def test_browser_check_json(monkeypatch) -> None:
@@ -310,6 +318,72 @@ def test_tmcs_bill_download_json(monkeypatch) -> None:
     assert result.exit_code == 0
     assert '"command": "bill download"' in result.stdout
     assert '"bill_count": 2' in result.stdout
+
+
+def test_tmcs_bill_failure_contains_structured_capability_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail(**kwargs) -> CommandResponse:
+        raise RuntimeError("未找到猫超账单下载模板")
+
+    monkeypatch.setattr("ops_cli.cli.run_tmcs_bill_download", fail)
+
+    result = runner.invoke(app, ["--json", "tmcs", "bill", "download", "--dry-run"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["success"] is False
+    assert payload["data"]["error_code"] == "TEMPLATE_MISSING"
+    assert payload["data"]["retryable"] is False
+    assert payload["data"]["required_scenes"]
+    assert "recovery_hint" in payload["data"]
+
+
+def test_auth_failure_is_not_misclassified_by_capture_hint(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail() -> CommandResponse:
+        raise RuntimeError(
+            "tmall_chaoshi/maochao_item_search session 不可用：接口返回 401；"
+            "业务命令会按需捕获对应 scene"
+        )
+
+    monkeypatch.setattr("ops_cli.cli.tmcs_ensure_auth", fail)
+
+    result = runner.invoke(app, ["--json", "--no-interactive-login", "tmcs", "auth", "ensure"])
+
+    assert result.exit_code == 1
+    assert json.loads(result.stdout)["data"]["error_code"] == "AUTH_REQUIRED"
+
+
+def test_no_interactive_login_disables_recovery_policy(monkeypatch: pytest.MonkeyPatch) -> None:
+    observed: dict[str, bool] = {}
+
+    def fake_run_tmcs_bill_download(**kwargs) -> CommandResponse:
+        execution = current_capability_execution()
+        assert execution is not None
+        observed["allow_recovery"] = execution.allow_recovery
+        return CommandResponse(success=True, platform="tmcs", command="bill download", data={})
+
+    monkeypatch.setattr("ops_cli.cli.run_tmcs_bill_download", fake_run_tmcs_bill_download)
+
+    result = runner.invoke(app, ["--json", "--no-interactive-login", "tmcs", "bill", "download"])
+
+    assert result.exit_code == 0
+    assert observed == {"allow_recovery": False}
+
+
+def test_interactive_login_enables_recovery_policy(monkeypatch: pytest.MonkeyPatch) -> None:
+    observed: dict[str, bool] = {}
+
+    def fake_run_tmcs_bill_download(**kwargs) -> CommandResponse:
+        execution = current_capability_execution()
+        assert execution is not None
+        observed["allow_recovery"] = execution.allow_recovery
+        return CommandResponse(success=True, platform="tmcs", command="bill download", data={})
+
+    monkeypatch.setattr("ops_cli.cli.run_tmcs_bill_download", fake_run_tmcs_bill_download)
+
+    result = runner.invoke(app, ["--json", "--interactive-login", "tmcs", "bill", "download"])
+
+    assert result.exit_code == 0
+    assert observed == {"allow_recovery": True}
 
 
 def test_tmcs_bill_learn_json(monkeypatch) -> None:

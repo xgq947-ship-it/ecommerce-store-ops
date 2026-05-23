@@ -58,11 +58,19 @@
 
 统一到：
 
-- `ops tmcs ...`
-- `ops jst ...`
-- `ops browser ...`
+- `ops --json tmcs ...`
+- `ops --json jst ...`
+- `ops --json browser ...`
 
 业务层不再把平台脚本名当正式命令设计。
+
+### 5. 平台能力执行契约统一
+
+- `Ops-Cli` 已增加 capability registry 与统一 runner，纳管现有 TMCS、JST 和 browser 命令。
+- stdout 严格输出单个 JSON 文档；登录等待、浏览器启动和恢复过程仅输出 stderr 与 context。
+- 交互终端可通过 `9222` 自动等待登录并恢复 scene；`--dry-run`、`auth check` 和无 TTY 调用不会触发交互恢复。
+- 业务层通过 `clients/ops_cli_client.py` 消费 `error_code`、`context_path` 与 `session_recovery`，不解析浏览器提示文案。
+- `Ops-Cli/sessionhub` 的代码与配置进入版本管理，Cookie、session 和日志仍为本地忽略资产。
 
 ## 之前的架构冲突
 

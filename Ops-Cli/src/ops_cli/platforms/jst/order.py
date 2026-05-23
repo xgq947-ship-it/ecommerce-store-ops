@@ -11,6 +11,8 @@ from urllib.parse import parse_qs, quote, urlsplit, urlunsplit
 
 import httpx
 
+from ops_cli.capabilities import mark_scene_refreshed
+from ops_cli.capabilities import require_interactive_recovery
 from ops_cli.config import get_config
 from ops_cli.integrations.sessionhub import get_scene_manager
 from ops_cli.output import CommandResponse
@@ -892,7 +894,9 @@ def run_order_label(
 
         auth_failures = [row for row in results if row["status"] == "failed_request" and is_probable_auth_error(row.get("reason"))]
         if auth_failures and not retried_for_auth and not any(row["status"] == "success" for row in results):
+            require_interactive_recovery(JST_ORDER_SCENE)
             get_scene_manager().capture_scene(JST_SITE, JST_ORDER_SCENE)
+            mark_scene_refreshed(JST_ORDER_SCENE)
             retried_for_auth = True
             auth_refresh_applied = True
             continue
@@ -991,7 +995,9 @@ def run_order_remark(
 
         auth_failures = [row for row in results if row["status"] == "failed_request" and is_probable_auth_error(row.get("reason"))]
         if auth_failures and not retried_for_auth and not any(row["status"] == "success" for row in results):
+            require_interactive_recovery(JST_ORDER_SCENE)
             get_scene_manager().capture_scene(JST_SITE, JST_ORDER_SCENE)
+            mark_scene_refreshed(JST_ORDER_SCENE)
             retried_for_auth = True
             auth_refresh_applied = True
             continue

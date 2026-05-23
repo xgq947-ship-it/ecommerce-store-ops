@@ -29,8 +29,11 @@ ops --json ...
 - `command`
 - `data`
 
+其中统一可用字段为 `data.artifacts`、`data.context_path` 与 `data.session_recovery`。失败时只读取 JSON 中的 `error_code`、`retryable` 和 `recovery_hint`，不得解析 stderr 的登录提示或浏览器文案。
+
 ## 错误处理
 
 - `Ops-Cli` 返回非 0：任务直接失败
 - `stdout` 非 JSON：任务直接失败
 - 业务层不得自行 fallback 到直连平台
+- 终端运行时平台 session 失效可由 Ops-Cli 自行拉起 `9222` 等待登录；无 TTY 运行快速失败并保留 context

@@ -8,10 +8,13 @@ from typing import Any
 
 from openpyxl import Workbook, load_workbook
 
+from ops_cli.capabilities import mark_scene_refreshed
+from ops_cli.capabilities import require_interactive_recovery
 from ops_cli.config import get_config
 from ops_cli.integrations.sessionhub import get_scene_manager
 from ops_cli.output import CommandResponse
 from ops_cli.platforms.auth_shared import is_probable_auth_error
+from ops_cli.platforms.jst.shared import ensure_scene_file_ready
 from ops_cli.runtime_context import write_runtime_context
 from ops_cli.utils.http import build_client
 
@@ -292,11 +295,15 @@ def run_product_sync(
     while True:
         template = _load_template()
         scene_path = _scene_store_path(JST_SITE, PRODUCT_SCENE)
-        if not scene_path.exists():
-            raise RuntimeError(f"未找到商品导出 scene：{scene_path}。请先运行 `ops jst product learn`。")
-        scene_check = _scene_is_valid(_read_json(scene_path))
-        if not scene_check["valid"]:
-            raise RuntimeError(f"商品导出 scene 不可用：{scene_check['reason']}。请先运行 `ops jst product learn`。")
+        ensure_scene_file_ready(
+            scene_path=scene_path,
+            read_scene=_read_json,
+            validate_scene=_scene_is_valid,
+            refresh_scene=learn_jst_product_sync,
+            next_command="ops jst product learn",
+            missing_label="商品导出 scene",
+            invalid_label="商品导出 scene",
+        )
 
         defaults = template.get("defaults") or {}
         source_path = Path(str(defaults.get("source_path") or get_config().jst_product_source_path)).expanduser()
@@ -313,7 +320,9 @@ def run_product_sync(
                 }
             except RuntimeError as exc:
                 if not retried_for_auth and is_probable_auth_error(exc):
+                    require_interactive_recovery(PRODUCT_SCENE)
                     learn_jst_product_sync(force=True)
+                    mark_scene_refreshed(PRODUCT_SCENE)
                     retried_for_auth = True
                     auth_refresh_applied = True
                     continue

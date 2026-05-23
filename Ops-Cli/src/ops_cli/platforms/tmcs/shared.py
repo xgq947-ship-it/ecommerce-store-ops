@@ -8,6 +8,7 @@ from typing import Any
 from urllib.parse import parse_qsl, urlencode, urljoin
 from urllib.parse import urlparse
 
+from ops_cli.capabilities import current_capability_execution
 from ops_cli.config import get_config
 from ops_cli.integrations.sessionhub import get_scene_manager
 from ops_cli.utils.http import build_client
@@ -113,10 +114,25 @@ def load_scene_or_fail(site: str, scene: str, *, next_command: str) -> dict[str,
 def check_scene_or_fail(site: str, scene: str, *, next_command: str) -> dict[str, Any]:
     manager = get_scene_manager()
     check = manager.check_scene(site, scene)
-    if check.get("status") != "valid":
+    if check.get("status") == "valid":
+        return check
+    execution = current_capability_execution()
+    if execution is not None and not execution.allow_recovery:
+        execution.recovery.mark_required()
         reason = (check.get("check_result") or {}).get("reason") or "scene 不可用"
+        raise RuntimeError(f"Scene 校验失败：{reason}。请先运行 `{next_command}`。")
+    try:
+        manager.ensure_scene(site, scene)
+    except Exception as exc:
+        reason = (check.get("check_result") or {}).get("reason") or "scene 不可用"
+        raise RuntimeError(f"scene 不可用：{reason}；自动恢复失败：{exc}。请先运行 `{next_command}`。") from exc
+    refreshed = manager.check_scene(site, scene)
+    if refreshed.get("status") != "valid":
+        reason = (refreshed.get("check_result") or {}).get("reason") or "scene 不可用"
         raise RuntimeError(f"scene 不可用：{reason}。请先运行 `{next_command}`。")
-    return check
+    if execution is not None:
+        execution.recovery.mark_refreshed(scene)
+    return refreshed
 
 
 def ensure_scene_assets(
@@ -128,6 +144,14 @@ def ensure_scene_assets(
 ) -> tuple[dict[str, Any], dict[str, Any], Path]:
     manager = get_scene_manager()
     scene_path = scene_store_path(site, scene)
+    execution = current_capability_execution()
+    if execution is not None and not execution.allow_recovery:
+        execution.recovery.mark_required()
+        check = manager.check_scene(site, scene)
+        if check.get("status") != "valid":
+            reason = (check.get("check_result") or {}).get("reason") or "scene 不可用"
+            raise RuntimeError(f"Scene 校验失败：{reason}。请先运行 `{next_command}`。")
+        return read_json(scene_path), check, scene_path
     if force:
         manager.capture_scene(site, scene)
     else:
@@ -136,6 +160,8 @@ def ensure_scene_assets(
     if check.get("status") != "valid":
         reason = (check.get("check_result") or {}).get("reason") or "scene 不可用"
         raise RuntimeError(f"scene 复检失败：{reason}。请先运行 `{next_command}`。")
+    if execution is not None:
+        execution.recovery.mark_refreshed(scene)
     return read_json(scene_path), check, scene_path
 
 

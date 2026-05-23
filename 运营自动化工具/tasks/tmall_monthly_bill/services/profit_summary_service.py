@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -71,6 +72,40 @@ def _sum_filtered(sheet, filter_column: int, filter_value: str, amount_column: i
     return total
 
 
+def _to_date(value: object) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value or "").strip()
+    if len(text) < 10:
+        return None
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        return None
+
+
+def _sum_filtered_in_period(
+    sheet,
+    filter_column: int,
+    filter_value: str,
+    amount_column: int,
+    date_column: int,
+    period_start: date,
+    period_end: date,
+) -> Decimal:
+    total = Decimal("0")
+    for row in range(2, sheet.max_row + 1):
+        if str(sheet.cell(row, filter_column).value).strip() != filter_value:
+            continue
+        row_date = _to_date(sheet.cell(row, date_column).value)
+        if row_date is None or row_date < period_start or row_date > period_end:
+            continue
+        total += _to_decimal(sheet.cell(row, amount_column).value)
+    return total
+
+
 def _cost_total_from_invoice(invoice_sheet) -> Decimal:
     qty_index = _header_index(invoice_sheet, "商品数量")
     cost_index = _header_index(invoice_sheet, "成本")
@@ -99,7 +134,13 @@ def _centered_summary_start_row(invoice_sheet, summary_row_count: int) -> int:
     return max(data_start_row, int(round(data_midpoint - summary_offset)))
 
 
-def render_profit_summary(workbook: Workbook, month_label: str) -> None:
+def render_profit_summary(
+    workbook: Workbook,
+    month_label: str,
+    *,
+    period_start: str | date | None = None,
+    period_end: str | date | None = None,
+) -> None:
     invoice_sheet = workbook["开票表"]
     cost_sheet = workbook["成本表"] if "成本表" in workbook.sheetnames else None
     charge_sheet = workbook["账扣表格"]
@@ -119,7 +160,25 @@ def render_profit_summary(workbook: Workbook, month_label: str) -> None:
     zdx_amount_index = _optional_header_index(zdx_sheet, ["金额", "收支金额", "发生金额", "资金明细"])
     if zdx_amount_index is None:
         raise ValueError("智多星推广数据表格 未找到金额列")
-    zdx_total = _sum_filtered(zdx_sheet, _header_index(zdx_sheet, "类型"), "从冻结中转出", zdx_amount_index)
+    if period_start is not None or period_end is not None:
+        begin = _to_date(period_start)
+        finish = _to_date(period_end)
+        if begin is None or finish is None:
+            raise ValueError("智多星推广汇总账期无效")
+        zdx_date_index = _optional_header_index(zdx_sheet, ["时间", "交易时间", "记账时间", "交易日期"])
+        if zdx_date_index is None:
+            raise ValueError("智多星推广数据表格 未找到时间列，无法按账期汇总")
+        zdx_total = _sum_filtered_in_period(
+            zdx_sheet,
+            _header_index(zdx_sheet, "类型"),
+            "从冻结中转出",
+            zdx_amount_index,
+            zdx_date_index,
+            begin,
+            finish,
+        )
+    else:
+        zdx_total = _sum_filtered(zdx_sheet, _header_index(zdx_sheet, "类型"), "从冻结中转出", zdx_amount_index)
     marketing_total = wxt_total + zdx_total
     profit_total = sales_total - cost_total - marketing_total - ticket_total - charge_total
 

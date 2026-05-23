@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
+from ops_cli.capabilities import mark_scene_refreshed
+from ops_cli.capabilities import require_interactive_recovery
 from ops_cli.integrations.sessionhub import get_scene_manager
 from ops_cli.output import CommandResponse
 from ops_cli.platforms.auth_shared import is_probable_auth_error
@@ -333,7 +335,9 @@ def run_order_reimburse_workorder(
             break
         except Exception as exc:
             if not retried_for_auth and is_probable_auth_error(exc):
+                require_interactive_recovery(JST_ORDER_SCENE)
                 get_scene_manager().capture_scene(JST_SITE, JST_ORDER_SCENE)
+                mark_scene_refreshed(JST_ORDER_SCENE)
                 retried_for_auth = True
                 auth_refresh_applied = True
                 continue

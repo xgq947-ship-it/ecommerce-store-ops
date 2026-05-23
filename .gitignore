@@ -1,6 +1,8 @@
 .DS_Store
 .playwright-cli/
+.superpowers/
 logs/
+runtime/
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -11,5 +13,4 @@ __pycache__/
 */runtime/
 */output/
 */screenshots/
-*/sessionhub/
 Ops-Cli/video/

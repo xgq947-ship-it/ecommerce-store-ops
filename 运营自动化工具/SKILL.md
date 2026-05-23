@@ -37,6 +37,8 @@ description: Use when the user mentions recurring local ecommerce operations in 
 5. 业务层通过 `clients/ops_cli_client.py` 调 `ops --json ...`
 6. 更新 `README.md`、`SKILL.md`、相关 `skill.yaml`
 
+`ops --json` 的 stdout 只能按标准 JSON 解析；登录等待、浏览器启动和恢复过程属于 stderr 诊断信息，业务任务不得依赖其文案。终端交互登录恢复由 `Ops-Cli` 处理，业务层不自行接管浏览器。
+
 ## 平台调用规则
 
 业务任务应调用：

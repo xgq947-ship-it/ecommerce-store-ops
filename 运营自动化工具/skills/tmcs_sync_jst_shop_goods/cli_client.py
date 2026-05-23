@@ -24,7 +24,8 @@ def _ops_command() -> list[str]:
 
 
 def _run_ops(args: list[str]) -> Any:
-    completed = subprocess.run([*_ops_command(), *args], cwd=OPS_CLI_ROOT, text=True, capture_output=True, check=False)
+    json_args = args if "--json" in args else ["--json", *args]
+    completed = subprocess.run([*_ops_command(), *json_args], cwd=OPS_CLI_ROOT, text=True, capture_output=True, check=False)
     if completed.returncode != 0:
         raise RuntimeError(f"Ops-Cli 执行失败：{completed.stderr.strip() or completed.stdout.strip()}")
     try:
@@ -51,10 +52,14 @@ def query_tmcs_stock(*, item_ids: list[str], warehouse_code: str) -> list[dict[s
             "json",
         ]
     )
-    if isinstance(payload, dict) and isinstance(payload.get("data"), list):
-        payload = payload["data"]
+    if isinstance(payload, dict):
+        data = payload.get("data")
+        if isinstance(data, dict) and isinstance(data.get("rows"), list):
+            payload = data["rows"]
+        elif isinstance(data, list):
+            payload = data
     if not isinstance(payload, list):
-        raise RuntimeError("Ops-Cli JSON 结构异常，tmcs stock query 期望返回数组。")
+        raise RuntimeError("Ops-Cli JSON 结构异常，tmcs stock query 期望返回 data.rows 数组。")
     return [_standardize(row) for row in payload if isinstance(row, dict)]
 
 

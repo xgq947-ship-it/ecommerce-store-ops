@@ -149,6 +149,43 @@ def test_profit_summary_falls_back_to_invoice_cost_when_cost_sheet_missing() -> 
     assert invoice.cell(start_row + 2, start_col + 2).value == 70
 
 
+def test_profit_summary_limits_zdx_full_ledger_to_bill_period() -> None:
+    workbook = Workbook()
+    invoice = workbook.active
+    invoice.title = "开票表"
+    invoice.append(["商品数量", "票扣", "账单金额", "开票金额", "成本"])
+    invoice.append([1, 0, 100, 100, 20])
+
+    cost = workbook.create_sheet("成本表")
+    cost.append(["金额"])
+    cost.append([20])
+
+    charge = workbook.create_sheet("账扣表格")
+    charge.append(["含税金额"])
+    charge.append([0])
+
+    wxt = workbook.create_sheet("万相台推广数据表格")
+    wxt.append(["收支类型", "金额"])
+    wxt.append(["支出", 0])
+
+    zdx = workbook.create_sheet("智多星推广数据表格")
+    zdx.append(["类型", "资金明细", "时间"])
+    zdx.append(["从冻结中转出", 5, "2026-04-23 09:00:43"])
+    zdx.append(["从冻结中转出", 99, "2026-05-07 14:00:07"])
+
+    start_col = invoice.max_column + 2
+    render_profit_summary(
+        workbook,
+        month_label="4月份利润表",
+        period_start="2026-04-01",
+        period_end="2026-04-30",
+    )
+
+    start_row = _centered_summary_start_row(invoice, 7)
+    assert invoice.cell(start_row + 3, start_col + 2).value == 5
+    assert invoice.cell(start_row + 6, start_col + 2).value == 75
+
+
 def test_profit_summary_starts_from_center_of_invoice_data_area() -> None:
     workbook = Workbook()
     invoice = workbook.active
@@ -257,8 +294,8 @@ def test_process_keeps_source_files_in_place_after_generating_archive_workbook(t
     zdx_file = bill_dir / "场景智投资金账户明细导出.xlsx"
     zdx_book = Workbook()
     zdx_sheet = zdx_book.active
-    zdx_sheet.append(["类型", "金额"])
-    zdx_sheet.append(["从冻结中转出", 5])
+    zdx_sheet.append(["类型", "金额", "时间"])
+    zdx_sheet.append(["从冻结中转出", 5, "2026-04-02 09:00:00"])
     zdx_book.save(zdx_file)
 
     class FakeSource:
@@ -389,3 +426,22 @@ def test_find_existing_promotion_bill_prefers_current_bill_dir(tmp_path: Path) -
     found = tmall_main.find_existing_promotion_bill("wxt", "2026-04-01", bill_dir)
 
     assert found == expected.resolve()
+
+
+def test_download_promotion_bill_uses_existing_download_before_cli(tmp_path: Path, monkeypatch) -> None:
+    bill_dir = tmp_path / "downloads"
+    bill_dir.mkdir()
+    expected = bill_dir / "智多星推广账单_2026-04.xlsx"
+    expected.write_bytes(b"existing")
+    calls = {"count": 0}
+
+    def fake_run_ops_json(*_args, **_kwargs):
+        calls["count"] += 1
+        return {"data": {"downloaded_files": []}}
+
+    monkeypatch.setattr(tmall_main, "run_ops_json", fake_run_ops_json)
+
+    found = tmall_main.download_promotion_bill("zdx", "2026-04-01", "2026-04-30", bill_dir)
+
+    assert found == expected.resolve()
+    assert calls["count"] == 0

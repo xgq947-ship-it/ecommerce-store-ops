@@ -47,7 +47,7 @@
 - `ops --json tmcs inventory export`
 - `ops --json tmcs inventory adjust-learn`
 - `ops --json tmcs inventory adjust`
-- `ops tmcs stock query --item-ids ... --warehouse-code ... --output json`
+- `ops --json tmcs stock query --item-ids ... --warehouse-code ... --output json`
 - `ops --json tmcs bill learn`
 - `ops --json tmcs bill download`
 - `ops --json tmcs promotion-bill learn --source all`
@@ -60,7 +60,7 @@
 - 一盘货库存查询
 - 库存导出 / 调整
 - 月账单下载：`HDB` 明细、`对账单列表`
-- 推广账单下载：智多星、万象台；智多星保留 `.xlsx`，万象台按页面真实返回保留 `.csv`
+- 推广账单下载：智多星、万象台；智多星保留平台完整资金流水 `.xlsx` 原表，万象台按页面真实返回保留 `.csv`
 
 当前 TMCS 账单链路依赖的 scene：
 
@@ -79,6 +79,15 @@
 - `ops --json browser check --port 9222`
 - `ops --json jst browser learn --scene ...`
 
+所有依赖 SessionHub 的正式交互 CLI 统一通过 capability runner 处理恢复链路：
+
+- 自动拉起 `9222` 专用浏览器
+- 等待手动登录
+- 登录后按 scene 配置自动刷新页面或点击固定按钮
+- 捕获到新 scene 后只重试原命令一次
+- `--dry-run`、`auth check` 及无 TTY 调用不会自动恢复，可分别检查状态或返回 `AUTH_REQUIRED`
+- 可用 `--interactive-login` / `--no-interactive-login` 显式覆盖终端判断
+
 ## 输出标准
 
 统一响应：
@@ -88,13 +97,26 @@
   "success": true,
   "platform": "jst",
   "command": "product sync",
-  "data": {}
+  "data": {
+    "capability_id": "jst.product.sync",
+    "artifacts": [],
+    "context_path": "runtime/context/...",
+    "session_recovery": {
+      "required": false,
+      "interactive": false,
+      "scenes_refreshed": [],
+      "retry_count": 0
+    }
+  }
 }
 ```
 
 常见 `data` 字段：
 
-- `runtime_context`
+- `context_path`
+- `capability_id`
+- `artifacts`
+- `session_recovery`
 - `latest_file`
 - `import_file`
 - `failed_file`

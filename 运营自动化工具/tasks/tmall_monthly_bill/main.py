@@ -32,11 +32,10 @@ DEFAULT_SCRIPT_DIR = DEFAULT_WORK_DIR / "项目资料" / "脚本"
 DEFAULT_TABLE1_FILE = get_path("tmall_goods_master_file")
 DEFAULT_TABLE2_FILE = get_path("jst_product_master_file")
 SYSTEM_PYTHON = Path("/usr/bin/python3")
-SESSIONHUB_RECOVERY_TEXT = """请运行：
-cd /Users/dasheng/Desktop/电商Brain/02-运营店铺/Ops-Cli/sessionhub
-python3 sessionhub.py chrome start
-python3 sessionhub.py capture tmall_chaoshi --scene download_file_query
-python3 sessionhub.py capture tmall_chaoshi --scene statement_bill_dynamic_list"""
+SESSIONHUB_RECOVERY_TEXT = """请在交互终端运行：
+cd /Users/dasheng/Desktop/电商Brain/02-运营店铺/Ops-Cli
+./.venv/bin/ops --json --interactive-login tmcs bill learn
+./.venv/bin/ops --json --interactive-login tmcs bill download --last-month --download-statement-list"""
 
 
 def parse_args() -> argparse.Namespace:
@@ -100,7 +99,7 @@ def auto_download_bills_if_needed(args: argparse.Namespace, bill_dir: Path) -> d
         raise SystemExit(
             "未找到 HDB 数据源，自动下载也失败。\n"
             f"处理方式：要么自行下载 HDB*.xlsx 放到 {bill_dir}；"
-            "要么刷新 SessionHub 动态 session。\n\n"
+            "要么通过 Ops-Cli 恢复登录态并重新下载。\n\n"
             f"{SESSIONHUB_RECOVERY_TEXT}\n\n"
             f"自动下载命令：{' '.join(command)}\n"
             f"stdout:\n{result.stdout}\n"
@@ -277,7 +276,7 @@ def resolve_statement_list(source, statement_path: Path, bill_periods: list[str]
             "未找到对账单列表：\n"
             f"{statement_path}\n"
             "也未找到同名重名文件，例如 对账单列表(1).xlsx。\n"
-            "请先从猫超后台导出对账单列表，或去掉 --dry-run 让脚本通过 SessionHub 自动导出。"
+            "请先从猫超后台导出对账单列表，或去掉 --dry-run 让 Ops-Cli 自动导出。"
         )
 
     for candidate in candidates:
@@ -291,7 +290,7 @@ def resolve_statement_list(source, statement_path: Path, bill_periods: list[str]
         "已找到对账单列表文件，但没有匹配当前 HDB 账单周期的数据。\n"
         f"当前 HDB 账期：{', '.join(bill_periods)}\n"
         f"检查过的文件：\n{candidate_text}\n"
-        "请下载包含对应月份/账期的最新对账单列表，或去掉 --dry-run 让脚本通过 SessionHub 自动导出。"
+        "请下载包含对应月份/账期的最新对账单列表，或去掉 --dry-run 让 Ops-Cli 自动导出。"
     )
 
 
@@ -341,7 +340,7 @@ def auto_download_statement_list_if_needed(
     if result.returncode != 0:
         raise SystemExit(
             "未找到匹配当前 HDB 账期的对账单列表，自动导出也失败。\n"
-            "处理方式：登录猫超后台确认对账单列表页面正常，并刷新 SessionHub 动态 session。\n\n"
+            "处理方式：在交互终端通过 Ops-Cli 恢复登录态并重新导出。\n\n"
             f"{SESSIONHUB_RECOVERY_TEXT}\n\n"
             f"自动导出命令：{' '.join(command)}\n"
             f"stdout:\n{result.stdout}\n"
@@ -404,6 +403,8 @@ def find_existing_promotion_bill(source_name: str, start: str, search_dir: Path)
 
 def download_promotion_bill(source_name: str, start: str, end: str, bill_dir: Path) -> Path:
     existing = find_existing_promotion_bill(source_name, start, bill_dir)
+    if existing is not None:
+        return existing
     try:
         payload = run_ops_json(
             [
@@ -425,12 +426,8 @@ def download_promotion_bill(source_name: str, start: str, end: str, bill_dir: Pa
             path = Path(str(downloaded_files[0])).expanduser().resolve()
             if path.exists():
                 return path
-        if existing is not None:
-            return existing
         raise SystemExit(f"{source_name} 推广账单 CLI 未返回下载文件")
     except Exception as exc:
-        if existing is not None:
-            return existing
         raise SystemExit(f"{source_name} 推广账单下载失败：{exc}") from exc
 
 
@@ -556,7 +553,7 @@ def process(args: argparse.Namespace) -> dict:
         write_reconciliation_sheet(workbook, Path(invoice_check["statement_list"]))
         write_promotion_sheet(workbook, "万相台推广数据表格", wxt_path)
         write_promotion_sheet(workbook, "智多星推广数据表格", zdx_path)
-        render_profit_summary(workbook, month_label=f"{month}月份利润表")
+        render_profit_summary(workbook, month_label=f"{month}月份利润表", period_start=start, period_end=end)
         workbook.save(output_path)
 
     return {

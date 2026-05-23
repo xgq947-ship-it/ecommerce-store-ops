@@ -3,6 +3,7 @@ from datetime import date
 
 import pytest
 
+from ops_cli.capabilities import bind_capability_execution, get_capability
 from ops_cli.platforms.tmcs import bill
 from ops_cli.platforms.tmcs import shared as tmcs_shared
 
@@ -193,3 +194,78 @@ def test_ensure_scene_assets_refreshes_existing_invalid_scene(tmp_path, monkeypa
     assert check["status"] == "valid"
     assert path == scene_path
     assert session["scene"] == "statement_bill_list_for_supplier"
+
+
+def test_check_scene_or_fail_auto_ensures_invalid_scene(monkeypatch) -> None:
+    calls = {"ensure": 0}
+
+    class FakeManager:
+        def check_scene(self, site, scene):
+            if calls["ensure"] == 0:
+                return {"status": "invalid", "check_result": {"reason": "401"}}
+            return {"status": "valid", "check_result": {"reason": "ok"}}
+
+        def ensure_scene(self, site, scene):
+            calls["ensure"] += 1
+            return {"status": "valid"}
+
+    monkeypatch.setattr(tmcs_shared, "get_scene_manager", lambda: FakeManager())
+
+    check = tmcs_shared.check_scene_or_fail(
+        "tmall_chaoshi",
+        "maochao_item_search",
+        next_command="ops tmcs product learn",
+    )
+
+    assert calls["ensure"] == 1
+    assert check["status"] == "valid"
+
+
+def test_check_scene_or_fail_does_not_recover_during_dry_run(monkeypatch) -> None:
+    calls = {"ensure": 0}
+
+    class FakeManager:
+        def check_scene(self, site, scene):
+            return {"status": "invalid", "check_result": {"reason": "401"}}
+
+        def ensure_scene(self, site, scene):
+            calls["ensure"] += 1
+            return {"status": "valid"}
+
+    monkeypatch.setattr(tmcs_shared, "get_scene_manager", lambda: FakeManager())
+    spec = get_capability("tmcs.bill.download")
+
+    with bind_capability_execution(spec, dry_run=True, interactive_login=True):
+        with pytest.raises(RuntimeError, match="Scene 校验失败"):
+            tmcs_shared.check_scene_or_fail(
+                "tmall_chaoshi",
+                "statement_bill_list_for_supplier",
+                next_command="ops tmcs bill download --dry-run",
+            )
+
+    assert calls["ensure"] == 0
+
+
+def test_check_scene_or_fail_does_not_wait_in_noninteractive_execution(monkeypatch) -> None:
+    calls = {"ensure": 0}
+
+    class FakeManager:
+        def check_scene(self, site, scene):
+            return {"status": "invalid", "check_result": {"reason": "401"}}
+
+        def ensure_scene(self, site, scene):
+            calls["ensure"] += 1
+            return {"status": "valid"}
+
+    monkeypatch.setattr(tmcs_shared, "get_scene_manager", lambda: FakeManager())
+    spec = get_capability("tmcs.bill.download")
+
+    with bind_capability_execution(spec, interactive_login=False):
+        with pytest.raises(RuntimeError, match="Scene 校验失败"):
+            tmcs_shared.check_scene_or_fail(
+                "tmall_chaoshi",
+                "statement_bill_list_for_supplier",
+                next_command="ops tmcs bill download",
+            )
+
+    assert calls["ensure"] == 0

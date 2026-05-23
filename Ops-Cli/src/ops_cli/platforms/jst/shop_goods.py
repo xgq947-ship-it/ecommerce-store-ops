@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from ops_cli.integrations.sessionhub import get_scene_manager
 from ops_cli.output import CommandResponse
 from ops_cli.platforms.jst.browser import JST_FALLBACK_URL
 from ops_cli.platforms.jst.browser import load_jst_browser_profile
@@ -17,6 +18,8 @@ SESSIONHUB_CHROME_COMMAND = (
     "--user-data-dir=/tmp/chrome-jst-import"
 )
 DEFAULT_SCENE = "shop-goods-import"
+JST_SITE = "jst_erp"
+JST_AUTH_SCENE = "order_list"
 SCREENSHOT_DIR = Path("runtime/screenshots")
 MODE_ALIASES = {
     "ignore": {"ignore", "忽略"},
@@ -231,6 +234,7 @@ def import_jst_shop_goods(*, file_path: str | Path, shop_name: str, mode: str = 
     if not excel_path.exists():
         raise FileNotFoundError(f"导入 Excel 不存在：{excel_path}")
 
+    get_scene_manager().ensure_scene(JST_SITE, JST_AUTH_SCENE)
     profile = _load_profile_or_fallback()
 
     with sync_playwright() as p:

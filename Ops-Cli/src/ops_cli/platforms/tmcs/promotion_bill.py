@@ -7,6 +7,10 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+from ops_cli.capabilities import current_capability_execution
+from ops_cli.capabilities import mark_scene_refreshed
+from ops_cli.capabilities import recovery_must_fail_fast
+from ops_cli.capabilities import require_interactive_recovery
 from ops_cli.config import get_config
 from ops_cli.output import CommandResponse
 from ops_cli.runtime_context import write_runtime_context
@@ -201,6 +205,22 @@ def _is_probably_spreadsheet(content: bytes) -> bool:
     return is_probably_excel(content) or _is_probably_csv(content)
 
 
+def _raise_if_auth_payload(payload: Any) -> None:
+    if not isinstance(payload, dict) or payload.get("success") is not False:
+        return
+    serialized = json.dumps(payload, ensure_ascii=False)
+    if not is_probable_auth_error(serialized):
+        return
+    message = (
+        payload.get("errorMessage")
+        or payload.get("message")
+        or payload.get("msg")
+        or payload.get("errorCode")
+        or "平台登录态失效"
+    )
+    raise RuntimeError(f"平台登录态失效：{message}")
+
+
 def _source_file_path(output_dir: Path, source: str, start: date, suffix: str | None = None) -> Path:
     extension = suffix or str(SOURCE_CONFIGS[source].get("default_extension") or ".xlsx")
     filename = f"{SOURCE_CONFIGS[source]['filename']}_{start.strftime('%Y-%m')}{extension}"
@@ -248,7 +268,7 @@ def _write_template(*, sources: dict[str, dict[str, Any]], query_scene: dict[str
     return path
 
 
-def _load_template() -> dict[str, Any]:
+def _load_template(*, allow_refresh: bool = True) -> dict[str, Any]:
     path = _template_path()
     if not path.exists():
         raise RuntimeError(f"未找到猫超推广账单模板：{path}。请先运行 `ops tmcs promotion-bill learn --source all`。")
@@ -258,7 +278,11 @@ def _load_template() -> dict[str, Any]:
     if any("cookies" not in source for source in sources.values() if isinstance(source, dict)) or (
         query_scene and "cookies" not in query_scene
     ):
-        learn_promotion_bill(source=SOURCE_ALL, force=False)
+        execution = current_capability_execution()
+        if allow_refresh and (execution is None or not execution.dry_run):
+            learn_promotion_bill(source=SOURCE_ALL, force=False)
+        else:
+            return template
         template = read_json(path)
     return template
 
@@ -333,6 +357,8 @@ def learn_promotion_bill(*, source: str = SOURCE_ALL, force: bool = False, timeo
                 )
                 scene_paths[item] = str(scene_path)
             except RuntimeError:
+                if force:
+                    raise
                 scene_data = load_scene_or_fail(TMCS_SITE, scene_name, next_command="ops tmcs auth capture")
                 scene_paths[item] = str(scene_store_path(TMCS_SITE, scene_name))
         learned_sources[item] = _scene_to_template(scene_data)
@@ -413,6 +439,7 @@ def _query_download_center_url(query_scene: dict[str, Any], source: str) -> str 
         json_body=json_body,
         data_body=data_body,
     )
+    _raise_if_auth_payload(payload)
     found = find_success_file_url_by_keywords(payload, SOURCE_CONFIGS[source]["download_keywords"])
     if found:
         return found
@@ -452,6 +479,7 @@ def _download_source(
     url = str(scene.get("url") or "")
     headers = _request_headers(scene, url)
     _, payload, content = tmcs_request(method, url, headers=headers, json_body=json_body, data_body=data_body)
+    _raise_if_auth_payload(payload)
 
     resolved_content: bytes | None = None
     if content and _is_probably_spreadsheet(content):
@@ -460,6 +488,7 @@ def _download_source(
         file_url = find_download_url(payload)
         if file_url:
             _, nested_payload, nested_content = tmcs_download(file_url, headers=None)
+            _raise_if_auth_payload(nested_payload)
             resolved_content, _ = resolve_download_content(content=nested_content, parsed_payload=nested_payload, headers=None)
         else:
             task_id = extract_export_task_id(payload)
@@ -467,6 +496,7 @@ def _download_source(
                 gei_url = gei_task_download_url(url, task_id)
                 for _ in range(12):
                     _, nested_payload, nested_content = tmcs_download(gei_url, headers=_request_headers(scene, gei_url))
+                    _raise_if_auth_payload(nested_payload)
                     if nested_content and _is_probably_spreadsheet(nested_content):
                         resolved_content = nested_content
                         break
@@ -482,6 +512,7 @@ def _download_source(
                     file_url = _query_download_center_url(query_scene, source)
                     if file_url:
                         _, final_payload, final_content = tmcs_download(file_url, headers=None)
+                        _raise_if_auth_payload(final_payload)
                         resolved_content, _ = resolve_download_content(content=final_content, parsed_payload=final_payload, headers=None)
                         break
                     time.sleep(5)
@@ -508,7 +539,7 @@ def run_promotion_bill_download(
     if dry_run:
         template_warning = None
         try:
-            template = _load_template()
+            template = _load_template(allow_refresh=False)
         except RuntimeError as exc:
             template_warning = str(exc)
             template = {"defaults": {"output_dir": get_config().tmcs_bill_download_dir}, "sources": {}, "download_query": {}}
@@ -520,6 +551,8 @@ def run_promotion_bill_download(
                 check = check_scene_or_fail(TMCS_SITE, scene_name, next_command="ops tmcs promotion-bill learn --source all")
                 scene_status.append({"source": item, "scene": scene_name, "status": check.get("status", "valid")})
             except Exception as exc:
+                if recovery_must_fail_fast():
+                    raise
                 scene_status.append({"source": item, "scene": scene_name, "status": "warning", "warning": str(exc)})
         if template_warning:
             scene_status.append({"source": source, "scene": "promotion_bill_template", "status": "missing", "warning": template_warning})
@@ -577,6 +610,8 @@ def run_promotion_bill_download(
                 check = check_scene_or_fail(TMCS_SITE, scene_name, next_command="ops tmcs promotion-bill learn --source all")
                 scene_status.append({"source": item, "scene": scene_name, "status": check.get("status", "valid")})
             except Exception as exc:
+                if recovery_must_fail_fast():
+                    raise
                 scene_status.append({"source": item, "scene": scene_name, "status": "warning", "warning": str(exc)})
         if auth_refresh_applied:
             scene_status.append({"source": source, "scene": "promotion_bill_template", "status": "refreshed", "warning": "检测到推广账单鉴权失败，已自动强制刷新 SessionHub scenes 并重试一次。"})
@@ -610,7 +645,9 @@ def run_promotion_bill_download(
                 failed.append({"source": item, "label": SOURCE_CONFIGS[item]["label"], "error": str(exc)})
 
         if not downloaded_files and failed and not retried_for_auth and is_probable_auth_error(failed[0]["error"]):
+            require_interactive_recovery(SOURCE_CONFIGS[selected[0]]["scene"])
             learn_promotion_bill(source=source, force=True)
+            mark_scene_refreshed(SOURCE_CONFIGS[selected[0]]["scene"])
             retried_for_auth = True
             auth_refresh_applied = True
             continue

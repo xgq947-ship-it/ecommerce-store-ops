@@ -18,7 +18,8 @@ python3 run.py 猫超账单整理 --dry-run --skip-auto-download
 - 若目录里已有 `HDB*.xlsx`、`对账单列表.xlsx`、推广账单源文件，则直接复用
 - 缺失时再调用 `Ops-Cli`
 - `Ops-Cli` 通过 SessionHub `9222` 专用浏览器执行真实下载
-- 如果 scene 登录态失效，脚本会自动拉起 `9222` 页面等待手动登录；登录后自动刷新目标页并继续固定下载动作
+- 在交互终端中，如果 scene 登录态失效，`Ops-Cli` 会自动拉起 `9222` 页面等待手动登录；登录后自动刷新目标页并只重试下载一次
+- `--dry-run` 和无 TTY 执行不会等待登录；失效时返回状态或 `AUTH_REQUIRED`
 
 当前生成结果包含：
 
@@ -55,6 +56,8 @@ python3 run.py 猫超账单整理 --dry-run --skip-auto-download
 - `对账单列表` 通过现有账单下载链路获取
 - `万相台推广数据表格` 通过 `ops --json tmcs promotion-bill download --source wxt`
 - `智多星推广数据表格` 通过 `ops --json tmcs promotion-bill download --source zdx`
+
+智多星平台导出为完整资金流水，sheet 保留原始全部行；利润汇总只在本次 HDB 账期内筛选 `类型=从冻结中转出` 的记录，避免跨月金额叠加。
 
 其中账单下载内部链路是：
 

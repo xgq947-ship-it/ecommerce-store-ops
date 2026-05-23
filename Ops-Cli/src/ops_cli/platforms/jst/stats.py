@@ -12,6 +12,7 @@ import httpx
 from ops_cli.config import get_config
 from ops_cli.integrations.sessionhub import get_scene_manager
 from ops_cli.output import CommandResponse
+from ops_cli.platforms.jst.shared import ensure_scene_file_ready
 from ops_cli.runtime_context import write_runtime_context
 from ops_cli.utils.http import build_client
 
@@ -551,11 +552,15 @@ def run_order_stats(*, date_arg: str = DEFAULT_DATE_MODE, store: str | None = No
     selected_store = store or get_config().jst_order_stats_store
     template = _load_template()
     scene_path = _scene_store_path(JST_SITE, PROFIT_SCENE)
-    if not scene_path.exists():
-        raise RuntimeError(f"未找到 scene：{scene_path}。请先运行 `ops jst order stats learn`。")
-    scene_check = _scene_is_valid(_read_json(scene_path))
-    if not scene_check["valid"]:
-        raise RuntimeError(f"scene 不可用：{scene_check['reason']}。请先运行 `ops jst order stats learn`。")
+    ensure_scene_file_ready(
+        scene_path=scene_path,
+        read_scene=_read_json,
+        validate_scene=_scene_is_valid,
+        refresh_scene=learn_order_stats,
+        next_command="ops jst order stats learn",
+        missing_label="订单统计 scene",
+        invalid_label="订单统计 scene",
+    )
 
     headers, post_data, callback_payload = _apply_template_overrides(template, date_value=selected_date, store=selected_store)
     method = str(template.get("method") or "POST").upper()

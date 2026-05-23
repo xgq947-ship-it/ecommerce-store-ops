@@ -13,6 +13,7 @@
 
 ```text
 CLI
+  -> capabilities / execution
   -> integrations
   -> platforms/jst
   -> platforms/tmcs
@@ -24,6 +25,10 @@ CLI
 
 - `src/ops_cli/cli.py`
   - 唯一正式 CLI 入口
+- `src/ops_cli/capabilities.py`
+  - 注册平台能力、依赖 scene、产物类型和登录恢复策略
+- `src/ops_cli/execution.py`
+  - 统一执行生命周期、JSON 契约、错误分类、context 和恢复摘要
 - `src/ops_cli/integrations/sessionhub.py`
   - 统一接 SessionHub scene 校验 / capture / ensure
 - `src/ops_cli/platforms/jst/`
@@ -36,6 +41,14 @@ CLI
   - 统一日志格式
 - `src/ops_cli/runtime_context.py`
   - 统一上下文记录
+
+## 执行生命周期
+
+- `ops --json ...` 所有正式命令先进入 capability runner，再调用平台模块。
+- 交互终端下，失效 scene 可自动打开 `9222`、等待手动登录、执行配置动作、复检并只重试原操作一次。
+- `--dry-run` 与 `auth check` 仅检查当前状态，不启动浏览器、不捕获、不写业务产物。
+- 无 TTY 或 `--no-interactive-login` 失效时快速返回 `AUTH_REQUIRED`；`--interactive-login` 可强制启用交互恢复。
+- stdout 只允许一个 JSON 文档；登录提示、浏览器启动和重试过程只写 stderr 与 runtime context。
 
 ## 边界
 
@@ -69,4 +82,5 @@ CLI
 ## 当前兼容点
 
 - `SESSIONHUB_ROOT` 当前默认指向 `/Users/dasheng/Desktop/电商Brain/02-运营店铺/Ops-Cli/sessionhub`
-- 这是会话资产目录兼容，不再意味着平台逻辑归业务项目
+- `sessionhub/scene`、`browser`、`config` 和入口代码纳入仓库；Cookie、session、日志和浏览器 profile 永久排除
+- 这是平台能力目录，不再意味着平台逻辑归业务项目

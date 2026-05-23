@@ -48,7 +48,7 @@
 - `刷单报销登记` -> `ops --json jst order reimburse`
 - `猫超账单下载阶段` -> `ops --json tmcs bill download`
 - `猫超账单整理` -> `ops --json tmcs bill download` + `ops --json tmcs promotion-bill download`
-- `tmcs_sync_jst_shop_goods` skill -> `ops tmcs stock query` + `ops --json jst shop-goods import`
+- `tmcs_sync_jst_shop_goods` skill -> `ops --json tmcs stock query` + `ops --json jst shop-goods import`
 
 ## 常用命令
 

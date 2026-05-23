@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl
 
+from ops_cli.capabilities import recovery_must_fail_fast
 from ops_cli.config import get_config
 from ops_cli.output import CommandResponse
 from ops_cli.platforms.tmcs.shared import TMCS_INVENTORY_EXPORT_FILENAME
@@ -1078,8 +1079,14 @@ def run_inventory_export(
     output_dir = Path(str(defaults.get("output_dir") or get_config().tmcs_bill_download_dir)).expanduser()
     effective_warehouse_code = warehouse_code or str(defaults.get("warehouse_code") or DEFAULT_WAREHOUSE_CODE)
 
-    check_scene_or_fail(TMCS_SITE, TMCS_INVENTORY_SEARCH_SCENE, next_command="ops tmcs inventory learn")
-    check_scene_or_fail(TMCS_SITE, TMCS_INVENTORY_EXPORT_SCENE, next_command="ops tmcs inventory learn")
+    scene_warnings: list[str] = []
+    for scene_name in (TMCS_INVENTORY_SEARCH_SCENE, TMCS_INVENTORY_EXPORT_SCENE):
+        try:
+            check_scene_or_fail(TMCS_SITE, scene_name, next_command="ops tmcs inventory learn")
+        except RuntimeError as exc:
+            if recovery_must_fail_fast():
+                raise
+            scene_warnings.append(str(exc))
 
     if dry_run:
         preview_output = str(output_dir / TMCS_INVENTORY_EXPORT_FILENAME)
@@ -1087,7 +1094,7 @@ def run_inventory_export(
             task_name="tmcs_inventory_export_run",
             status="success",
             inputs={"warehouse_code": effective_warehouse_code, "dry_run": True},
-            outputs={"warehouse_code": effective_warehouse_code, "output_dir": str(output_dir), "output_path": preview_output, "downloaded": False},
+            outputs={"warehouse_code": effective_warehouse_code, "output_dir": str(output_dir), "output_path": preview_output, "downloaded": False, "scene_warnings": scene_warnings},
         )
         return CommandResponse(
             success=True,
@@ -1100,6 +1107,7 @@ def run_inventory_export(
                 "output_dir": str(output_dir),
                 "output_path": preview_output,
                 "downloaded": False,
+                "scene_warnings": scene_warnings,
                 "dry_run": True,
                 "context_path": str(context_path),
             },
@@ -1174,6 +1182,8 @@ def run_inventory_adjust(
         try:
             check_scene_or_fail(TMCS_SITE, scene_name, next_command="ops tmcs inventory learn")
         except RuntimeError as exc:
+            if recovery_must_fail_fast():
+                raise
             scene_warnings.append(str(exc))
 
     results: list[dict[str, Any]] = []

@@ -1,5 +1,5 @@
 name: tmcs_sync_jst_shop_goods
-description: 将猫超一盘货库存商品信息同步生成聚水潭店铺商品资料导入表，并可通过 9222 浏览器自动导入。
+description: 将猫超一盘货库存商品信息同步生成聚水潭店铺商品资料导入表，并委托 Ops-Cli 通过 9222 专用浏览器执行导入与交互登录恢复。
 entrypoint: python skills/tmcs_sync_jst_shop_goods/main.py
 commands:
   learn: python skills/tmcs_sync_jst_shop_goods/main.py learn

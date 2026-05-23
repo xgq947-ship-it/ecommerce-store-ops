@@ -60,13 +60,13 @@ pip install -e .
 统一只保留这种命名：
 
 ```bash
-ops tmcs stock query
-ops tmcs product sync
-ops tmcs bill download
-ops jst product sync
-ops jst browser learn
-ops jst shop-goods import
-ops browser check
+ops --json tmcs stock query
+ops --json tmcs product sync
+ops --json tmcs bill download
+ops --json jst product sync
+ops --json jst browser learn
+ops --json jst shop-goods import
+ops --json browser check
 ```
 
 不再把 `python xxx.py`、`run_import.py`、`tmp_script.py`、`browser_test.py` 当成平台层正式接口。
@@ -89,7 +89,7 @@ ops --json tmcs promotion-bill download --last-month
 ops --json tmcs promotion-bill download --source zdx --last-month
 ops --json tmcs promotion-bill download --source wxt --last-month
 ops --json tmcs inventory export
-ops tmcs stock query --item-ids 1052534376394,234567 --warehouse-code mc_aokesi_suolong --output json
+ops --json tmcs stock query --item-ids 1052534376394,234567 --warehouse-code mc_aokesi_suolong --output json
 
 ops --json jst auth check
 ops --json jst product sync
@@ -106,7 +106,7 @@ ops --json jst browser learn --scene shop-goods-import
 ops --json jst shop-goods import --file /path/to/jst_shop_goods_import.xlsx --shop-name "（猫超）启明工贸有限公司" --mode cover --output json
 ```
 
-推广账单默认下载上一个自然月；智多星按页面文件中心返回 `.xlsx`，万象台按阿里妈妈页面真实返回保留 `.csv`，统一落到 `~/Downloads`，再由业务编排层读取。
+推广账单默认下载上一个自然月；智多星资金流水导出按页面文件中心返回完整 `.xlsx` 原始表，万象台按阿里妈妈页面真实返回保留 `.csv`，统一落到 `~/Downloads`，再由业务编排层按账期汇总。
 
 猫超账单下载当前正式链路：
 
@@ -115,7 +115,16 @@ ops --json jst shop-goods import --file /path/to/jst_shop_goods_import.xlsx --sh
 - `download_file_query`：查询下载中心文件
 - `tmcs bill download --last-month` 会把查询窗口顺延 3 天，兼容平台跨月出账
 - `tmcs bill download --download-statement-list --last-month` 会同时下载 `HDB*.xlsx` 和 `对账单列表.xlsx`
-- scene 失效时会自动进入 SessionHub 恢复流程：拉起 `9222` 专用浏览器、等待手动登录、自动刷新页面并执行固定动作后继续跑
+- 正式交互执行时，scene 失效会进入 SessionHub 恢复流程：拉起 `9222` 专用浏览器、等待手动登录、自动刷新页面并执行固定动作后继续跑
+
+当前依赖 SessionHub scene 的其他正式交互 CLI 也统一遵循同一恢复口径：
+
+- 先复检 scene；缺失或失效时自动拉起 `9222` 专用浏览器
+- 你只需要手动登录一次
+- 登录后脚本会按 scene 配置自动刷新页面，或自动点击 `查询 / 搜索 / 导出` 这类固定按钮
+- 捕获到新的 scene 后继续原来的 `tmcs/jst` 下载、同步、统计流程，不再因为登录态缺失直接中断
+- `--dry-run`、`auth check` 与无 TTY 执行不会拉起浏览器；无 TTY 失效时返回 `AUTH_REQUIRED`
+- 如需覆盖默认 TTY 判断，使用全局参数 `--interactive-login` 或 `--no-interactive-login`
 
 ## 环境变量
 
@@ -167,7 +176,17 @@ ops --json jst auth ensure
   "success": true,
   "platform": "tmcs",
   "command": "product sync",
-  "data": {}
+  "data": {
+    "capability_id": "tmcs.product.sync",
+    "artifacts": [],
+    "context_path": "runtime/context/...",
+    "session_recovery": {
+      "required": false,
+      "interactive": false,
+      "scenes_refreshed": [],
+      "retry_count": 0
+    }
+  }
 }
 ```
 

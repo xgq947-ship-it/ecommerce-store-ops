@@ -21,6 +21,7 @@
 - `tasks/`：业务任务目录，负责具体流程、参数解析、dry-run、业务日志和输出。
 - `clients/`：只保留业务侧到 `Ops-Cli` 的桥接。
 - `Ops-Cli/sessionhub/`：统一登录态中心、9222 Chrome 会话入口、动态请求捕获入口，不放业务逻辑。
+- `Ops-Cli/src/ops_cli/capabilities.py` 与 `execution.py`：统一能力注册、交互登录策略、JSON 输出和错误分类入口。
 - `runtime/context/`：任务运行上下文记录，用于追踪输入、输出、产物、错误和下游任务。
 - `runtime/retry/`：可重放失败项，不替代失败 Excel、业务日志或人工验收。
 - `logs/`：任务执行日志。
@@ -56,7 +57,7 @@ SessionHub 不做：
 - 不注册为业务任务。
 - 不引入数据库、前端页面或常驻复杂服务。
 
-动态 scene 配置放在 `Ops-Cli/sessionhub/config/sites/*.yaml`。scene 必须描述 `site`、`scene`、目标页面、URL 匹配片段、请求方法和登录策略。已有 scene 包括：
+动态 scene 配置放在 `Ops-Cli/sessionhub/config/sites/*.yaml`。scene 必须描述目标页面、URL 匹配片段、请求方法和 `auto_actions`，并支持 `wait_seconds`、`capture_retry_limit`、`sensitive_artifact_policy`。已有 scene 包括：
 
 - `tmall_chaoshi/download_file_query`
 - `tmall_chaoshi/statement_bill_dynamic_list`
@@ -113,6 +114,7 @@ SessionHub 不做：
 
 - 默认入口：`clients/ops_cli_client.py`。
 - tasks 不应重复拼装通用平台请求、登录态、Cookie 和 Token。
+- tasks 只消费 `ops --json` 的单一 stdout JSON 文档；stderr 的登录/浏览器提示只用于诊断。
 
 ## runtime 和 retry 规则
 
@@ -139,7 +141,8 @@ context 应尽量包含：
 
 - 猫超和聚水潭后台自动化优先走 `Ops-Cli` 内的 API/CDP/SessionHub 能力，不改成 Selenium。
 - 登录态统一复用 `Ops-Cli/sessionhub` 的 9222 Chrome 和 scene。
-- session 失效时应明确提示重新登录或重新 capture，不要静默 fallback。
+- 交互终端执行时，session 失效由 `Ops-Cli` 自动拉起 `9222`、等待手动登录、捕获后重试一次。
+- `--dry-run`、`auth check` 和无 TTY 调用不等待登录；失效时返回状态或 `AUTH_REQUIRED`，不要静默 fallback。
 - 平台接口沉淀到 `docs/apis/` 和 scene 配置时，避免包含敏感 Cookie/Token 明文。
 
 ## 新增任务流程
