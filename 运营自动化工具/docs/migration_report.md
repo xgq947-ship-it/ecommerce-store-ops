@@ -68,7 +68,7 @@
 
 - `Ops-Cli` 已增加 capability registry 与统一 runner，纳管现有 TMCS、JST 和 browser 命令。
 - stdout 严格输出单个 JSON 文档；登录等待、浏览器启动和恢复过程仅输出 stderr 与 context。
-- 交互终端可通过 `9222` 自动等待登录并恢复 scene；`--dry-run`、`auth check` 和无 TTY 调用不会触发交互恢复。
+- 真实 `jst` / `tmcs` 业务请求会由公共客户端先按平台执行一次 `--interactive-login ... auth ensure`，因此后台运行也可预检并尝试恢复已有 9222 登录态；`--dry-run` 与 `auth` 命令不触发前置预检。
 - 业务层通过 `clients/ops_cli_client.py` 消费 `error_code`、`context_path` 与 `session_recovery`，不解析浏览器提示文案。
 - `Ops-Cli/sessionhub` 的代码与配置进入版本管理，Cookie、session 和日志仍为本地忽略资产。
 

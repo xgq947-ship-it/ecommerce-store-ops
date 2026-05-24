@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import subprocess
 
+import pytest
+
 from clients import ops_cli_client
 
 
@@ -15,9 +17,95 @@ def _completed(returncode: int, payload: dict[str, object]) -> subprocess.Comple
     )
 
 
+@pytest.fixture(autouse=True)
+def _clear_preflight_cache() -> None:
+    ops_cli_client._PREFLIGHTED_PLATFORMS.clear()
+    yield
+    ops_cli_client._PREFLIGHTED_PLATFORMS.clear()
+
+
+def test_run_ops_json_preflights_authenticated_platform_command(monkeypatch) -> None:
+    calls: list[list[str]] = []
+    results = [
+        _completed(0, {"success": True, "data": {"status": "valid"}}),
+        _completed(0, {"success": True, "data": {"ok": True}}),
+    ]
+
+    monkeypatch.setattr(ops_cli_client, "_command_prefix", lambda: ["ops"])
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return results.pop(0)
+
+    monkeypatch.setattr(ops_cli_client.subprocess, "run", fake_run)
+
+    payload = ops_cli_client.run_ops_json(["--json", "jst", "product", "sync"])
+
+    assert payload["success"] is True
+    assert calls == [
+        ["ops", "--interactive-login", "--json", "jst", "auth", "ensure"],
+        ["ops", "--json", "jst", "product", "sync"],
+    ]
+
+
+def test_run_ops_json_preflights_each_platform_only_once(monkeypatch) -> None:
+    calls: list[list[str]] = []
+    results = [
+        _completed(0, {"success": True, "data": {"status": "valid"}}),
+        _completed(0, {"success": True, "data": {"ok": True}}),
+        _completed(0, {"success": True, "data": {"ok": True}}),
+    ]
+
+    monkeypatch.setattr(ops_cli_client, "_command_prefix", lambda: ["ops"])
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return results.pop(0)
+
+    monkeypatch.setattr(ops_cli_client.subprocess, "run", fake_run)
+
+    ops_cli_client.run_ops_json(["--json", "tmcs", "product", "sync"])
+    ops_cli_client.run_ops_json(["--json", "tmcs", "bill", "download"])
+
+    assert calls == [
+        ["ops", "--interactive-login", "--json", "tmcs", "auth", "ensure"],
+        ["ops", "--json", "tmcs", "product", "sync"],
+        ["ops", "--json", "tmcs", "bill", "download"],
+    ]
+
+
+def test_run_ops_json_stops_when_preflight_auth_fails(monkeypatch) -> None:
+    calls: list[list[str]] = []
+    result = _completed(
+        1,
+        {
+            "success": False,
+            "data": {
+                "error_code": "AUTH_REQUIRED",
+                "error": "session 不可用",
+                "context_path": "runtime/context/preflight.json",
+            },
+        },
+    )
+
+    monkeypatch.setattr(ops_cli_client, "_command_prefix", lambda: ["ops"])
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return result
+
+    monkeypatch.setattr(ops_cli_client.subprocess, "run", fake_run)
+
+    with pytest.raises(RuntimeError, match="认证预检失败 \\[AUTH_REQUIRED\\]"):
+        ops_cli_client.run_ops_json(["--json", "jst", "order", "label"])
+
+    assert calls == [["ops", "--interactive-login", "--json", "jst", "auth", "ensure"]]
+
+
 def test_run_ops_json_retries_auth_required_by_default_for_real_command(monkeypatch) -> None:
     calls: list[list[str]] = []
     results = [
+        _completed(0, {"success": True, "data": {"status": "valid"}}),
         _completed(
             1,
             {
@@ -45,6 +133,7 @@ def test_run_ops_json_retries_auth_required_by_default_for_real_command(monkeypa
 
     assert payload["success"] is True
     assert calls == [
+        ["ops", "--interactive-login", "--json", "jst", "auth", "ensure"],
         ["ops", "--json", "jst", "order", "reimburse"],
         ["ops", "--interactive-login", "--json", "jst", "order", "reimburse"],
     ]
@@ -52,24 +141,27 @@ def test_run_ops_json_retries_auth_required_by_default_for_real_command(monkeypa
 
 def test_run_ops_json_does_not_retry_without_tty(monkeypatch) -> None:
     calls: list[list[str]] = []
-    result = _completed(
-        1,
-        {
-            "success": False,
-            "data": {
-                "error_code": "AUTH_REQUIRED",
-                "error": "session 不可用",
-                "context_path": "runtime/context/first.json",
+    results = [
+        _completed(0, {"success": True, "data": {"status": "valid"}}),
+        _completed(
+            1,
+            {
+                "success": False,
+                "data": {
+                    "error_code": "AUTH_REQUIRED",
+                    "error": "session 不可用",
+                    "context_path": "runtime/context/first.json",
+                },
             },
-        },
-    )
+        ),
+    ]
 
     monkeypatch.setattr(ops_cli_client, "_command_prefix", lambda: ["ops"])
     monkeypatch.setattr(ops_cli_client.sys.stdin, "isatty", lambda: False)
 
     def fake_run(command, **kwargs):
         calls.append(command)
-        return result
+        return results.pop(0)
 
     monkeypatch.setattr(ops_cli_client.subprocess, "run", fake_run)
 
@@ -80,7 +172,10 @@ def test_run_ops_json_does_not_retry_without_tty(monkeypatch) -> None:
     else:
         raise AssertionError("expected RuntimeError")
 
-    assert calls == [["ops", "--json", "jst", "order", "reimburse"]]
+    assert calls == [
+        ["ops", "--interactive-login", "--json", "jst", "auth", "ensure"],
+        ["ops", "--json", "jst", "order", "reimburse"],
+    ]
 
 
 def test_run_ops_json_does_not_retry_dry_run_by_default(monkeypatch) -> None:

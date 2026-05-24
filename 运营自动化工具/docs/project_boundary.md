@@ -49,5 +49,6 @@
 - `sessionhub/` 目录已迁移到 `Ops-Cli/sessionhub`
 - 本项目不再保存 SessionHub 代码或会话资产
 - 平台消费权和资产维护权统一归 `Ops-Cli`
-- 业务公共客户端可依据结构化 `AUTH_REQUIRED` 结果追加 `--interactive-login` 重试一次；交互登录恢复仍由 `Ops-Cli` 使用 `9222` 执行
-- `--dry-run`、`auth check` 与无 TTY 失败不进入交互恢复
+- 业务公共客户端在真实 `jst` / `tmcs` 请求前按平台执行一次 `--interactive-login ... auth ensure` 前置预检；预检失败即停止业务动作
+- `--dry-run` 与 `auth` 命令跳过前置预检；预检后业务请求再次返回结构化 `AUTH_REQUIRED` 时，仅交互终端调用追加 `--interactive-login` 重试一次
+- 登录等待、浏览器启动和 scene 恢复仍由 `Ops-Cli` 使用 `9222` 执行

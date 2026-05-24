@@ -36,5 +36,6 @@ ops --json ...
 - `Ops-Cli` 返回非 0：任务直接失败
 - `stdout` 非 JSON：任务直接失败
 - 业务层不得自行 fallback 到直连平台
-- 真实平台调用在交互终端返回 `AUTH_REQUIRED` 时，`clients/ops_cli_client.py` 会以 `--interactive-login` 重试一次；拉起 `9222`、等待登录和刷新 scene 仍由 `Ops-Cli` 执行
-- `--dry-run`、`auth check` 与无 TTY 运行不触发交互恢复，失败时保留 context
+- 真实 `jst` / `tmcs` 平台调用前，`clients/ops_cli_client.py` 会按平台在当前业务进程内先执行一次 `ops --json --interactive-login <platform> auth ensure`；后台自动化和手动入口复用同一行为
+- 认证预检失败时不执行后续业务请求；登录、页面启动和 scene 恢复仍由 `Ops-Cli` 使用 `9222` 处理
+- `--dry-run` 与 `auth` 命令不触发前置预检；预检后的业务请求若再次返回 `AUTH_REQUIRED`，交互终端调用仍会追加 `--interactive-login` 重试一次，失败时保留 context

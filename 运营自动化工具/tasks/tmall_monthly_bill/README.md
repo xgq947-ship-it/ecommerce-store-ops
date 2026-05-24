@@ -18,8 +18,8 @@ python3 run.py 猫超账单整理 --dry-run --skip-auto-download
 - 若目录里已有 `HDB*.xlsx`、`对账单列表.xlsx`、推广账单源文件，则直接复用
 - 缺失时再调用 `Ops-Cli`
 - `Ops-Cli` 通过 SessionHub `9222` 专用浏览器执行真实下载
-- 在交互终端中，如果账单或推广下载 scene 登录态失效，业务入口会自动转入 `--interactive-login`；`Ops-Cli` 拉起 `9222` 页面等待手动登录，登录后自动刷新目标页并重试一次
-- `--dry-run` 和无 TTY 执行不会等待登录；失效时返回状态或 `AUTH_REQUIRED`
+- 真实下载首次调用 `tmcs` 前，公共客户端会先以 `--interactive-login tmcs auth ensure` 做一次预检；后台执行和手动执行统一生效，预检失败不进入下载
+- `--dry-run` 跳过前置预检；登录等待、页面启动、scene 刷新和 `session_recovery` 输出由 `Ops-Cli` 处理
 
 当前生成结果包含：
 

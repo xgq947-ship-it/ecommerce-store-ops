@@ -37,4 +37,4 @@ run.py
 
 `sessionhub/` 已迁移到 `Ops-Cli/sessionhub`；本项目不再保存平台会话资产。
 
-业务侧只解析 `ops --json` stdout 中的 `success/data/error_code/context_path/session_recovery`。真实命令返回 `AUTH_REQUIRED` 时，公共客户端只负责追加 `--interactive-login` 重试一次；登录等待、浏览器启动和 scene 恢复仍由 `Ops-Cli` 处理，本项目不解析 stderr 文案，也不直接操作 session。
+业务侧只解析 `ops --json` stdout 中的 `success/data/error_code/context_path/session_recovery`。真实 `jst` / `tmcs` 请求由公共客户端在当前进程内按平台先调用一次 `--interactive-login ... auth ensure`，预检失败即停止业务动作；预检后再次出现 `AUTH_REQUIRED` 时，交互终端调用再追加 `--interactive-login` 重试一次。登录等待、浏览器启动和 scene 恢复仍由 `Ops-Cli` 处理，本项目不解析 stderr 文案，也不直接操作 session。

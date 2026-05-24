@@ -9,6 +9,10 @@ from typing import Any
 from core.config_loader import get_path
 
 
+_AUTH_PLATFORMS = {"jst", "tmcs"}
+_PREFLIGHTED_PLATFORMS: set[str] = set()
+
+
 def ops_cli_root() -> Path:
     try:
         configured = get_path("ops_cli_root")
@@ -80,6 +84,38 @@ def _default_interactive_recovery(args: list[str]) -> bool:
     return not ("auth" in args and "check" in args)
 
 
+def _preflight_platform(args: list[str], *, allow_recovery: bool) -> str | None:
+    if not allow_recovery or "--dry-run" in args:
+        return None
+    for index, part in enumerate(args):
+        if part not in _AUTH_PLATFORMS:
+            continue
+        if index + 1 < len(args) and args[index + 1] == "auth":
+            return None
+        return part
+    return None
+
+
+def _raise_command_failure(payload: dict[str, Any], *, prefix: str = "Ops-Cli 执行失败") -> None:
+    data = payload.get("data") or {}
+    raise RuntimeError(
+        f"{prefix} [{data.get('error_code', 'UNKNOWN')}]："
+        f"{data.get('error', '未知错误')}；context={data.get('context_path', '')}"
+    )
+
+
+def preflight_platform_auth(platform: str) -> None:
+    if platform not in _AUTH_PLATFORMS:
+        raise ValueError(f"不支持认证预检的平台：{platform}")
+    if platform in _PREFLIGHTED_PLATFORMS:
+        return
+    completed = _run_command(["--interactive-login", "--json", platform, "auth", "ensure"])
+    payload = _parse_payload(completed)
+    if completed.returncode != 0:
+        _raise_command_failure(payload, prefix=f"{platform} 认证预检失败")
+    _PREFLIGHTED_PLATFORMS.add(platform)
+
+
 def run_ops_json(args: list[str], *, interactive_recovery: bool | None = None) -> dict[str, Any]:
     json_args = args if "--json" in args else ["--json", *args]
     allow_interactive_recovery = (
@@ -87,6 +123,9 @@ def run_ops_json(args: list[str], *, interactive_recovery: bool | None = None) -
         if interactive_recovery is None
         else interactive_recovery and _default_interactive_recovery(json_args)
     )
+    platform = _preflight_platform(json_args, allow_recovery=allow_interactive_recovery)
+    if platform is not None:
+        preflight_platform_auth(platform)
     completed = _run_command(json_args)
     payload = _parse_payload(completed)
     if completed.returncode != 0 and isinstance(payload, dict) and _should_retry_interactively(
@@ -97,10 +136,6 @@ def run_ops_json(args: list[str], *, interactive_recovery: bool | None = None) -
         payload = _parse_payload(completed)
     if completed.returncode != 0:
         if isinstance(payload, dict):
-            data = payload.get("data") or {}
-            raise RuntimeError(
-                f"Ops-Cli 执行失败 [{data.get('error_code', 'UNKNOWN')}]："
-                f"{data.get('error', '未知错误')}；context={data.get('context_path', '')}"
-            )
+            _raise_command_failure(payload)
         raise RuntimeError("Ops-Cli 执行失败且响应结构不是对象")
     return payload

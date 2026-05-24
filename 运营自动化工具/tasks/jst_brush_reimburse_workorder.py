@@ -467,6 +467,19 @@ def main() -> int:
             print(f"跳过订单：{item.order.order_no} | {reason}")
             logging.info("跳过订单：%s | %s", item.order.order_no, reason)
         if candidate is None:
+            check_failures = [item for item in checked if item.skip_reason]
+            if check_failures:
+                failures.extend(
+                    FailureRecord(order_no=item.order.order_no, reason=item.skip_reason or "")
+                    for item in check_failures
+                )
+                print("当前批次工单状态核验失败，已停止创建")
+                logging.error("当前批次工单状态核验失败，已停止创建")
+                failed_export = write_failed_export(failures)
+                if failed_export:
+                    print(f"失败导出：{failed_export}")
+                print(f"日志：{log_path}")
+                return 1
             print("当前批次所有订单均已存在报销工单")
             logging.info("当前批次所有订单均已存在报销工单")
             failed_export = write_failed_export(failures)

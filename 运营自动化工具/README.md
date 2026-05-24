@@ -15,7 +15,8 @@
 - 保留原中文任务名和模糊触发
 - 具体平台动作统一通过 `subprocess -> ops --json ...`
 - 不再在业务任务里直接请求 JST / TMCS
-- 真实平台调用在交互终端遇到 `AUTH_REQUIRED` 时，公共客户端会改用 `--interactive-login` 重试一次；`--dry-run`、`auth check` 和无 TTY 执行不等待登录
+- 真实 `jst` / `tmcs` 平台调用在每个业务进程首次请求前，公共客户端会先以 `--interactive-login ... auth ensure` 做一次认证预检；手动执行和后台自动化统一生效
+- 同一进程内同一平台只预检一次；`--dry-run` 与 `auth` 命令不触发前置预检。预检后业务请求再次返回 `AUTH_REQUIRED` 时，交互终端仍会以 `--interactive-login` 重试一次
 
 ## 统一架构
 

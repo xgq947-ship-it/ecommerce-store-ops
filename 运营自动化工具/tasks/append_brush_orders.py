@@ -28,6 +28,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from core.config_loader import get_path  # noqa: E402
 from core.task_context import TaskContext  # noqa: E402
+from clients.ops_cli_client import preflight_platform_auth  # noqa: E402
 
 
 DEFAULT_WORK_DIR = get_path("brush_register_dir")
@@ -1221,6 +1222,8 @@ def run(
 ) -> dict[str, object]:
     global SOURCE_DIR
     appended_orders: list[str] = []
+    if not dry_run:
+        preflight_platform_auth("jst")
     if auto_fetch_wechat and not has_xlsx_files(SOURCE_DIR):
         month, day = wechat_month_day or (date.today().month, date.today().day)
         print(f"今日刷单表格文件夹暂无 Excel，开始从微信文件目录自动查找：{month}月{day}日")
