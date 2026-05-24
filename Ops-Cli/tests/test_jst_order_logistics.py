@@ -36,16 +36,22 @@ class FakeClient:
         return None
 
     def post(self, *args: object, **kwargs: object) -> FakeResponse:
+        payload = str((kwargs or {}).get("data") or "")
+        order_no = "TB10001"
+        if "TB40404" in payload:
+            order_no = "TB40404"
         rows = [
             {
                 "o_id": "10001",
                 "so_id": "SO10001",
-                "outer_so_id": "TB10001",
+                "outer_so_id": order_no,
                 "logistics_no": "SF123456",
                 "logistics_company": "顺丰速运",
                 "logistics_status": "已签收",
             }
         ]
+        if order_no == "TB40404":
+            rows = []
         return FakeResponse({"ReturnValue": json.dumps({"rows": rows}, ensure_ascii=False)})
 
 
@@ -74,3 +80,31 @@ def test_run_order_logistics_from_order_list(monkeypatch, tmp_path: Path) -> Non
     assert response.data["logistics_company"] == "顺丰速运"
     assert response.data["signed"] is True
     assert Path(response.data["context_path"]).exists()
+
+
+def test_run_order_logistics_batch(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(order, "get_scene_manager", lambda: FakeSceneManager())
+    monkeypatch.setattr(order, "build_client", lambda **kwargs: FakeClient())
+
+    response = order.run_order_logistics(outer_order_ids=["TB10001", "TB40404"])
+
+    assert response.success is False
+    assert response.command == "order logistics"
+    assert response.data["summary"] == {"total": 2, "success": 1, "failed": 1}
+    assert response.data["items"][0]["success"] is True
+    assert response.data["items"][0]["outer_order_id"] == "TB10001"
+    assert response.data["items"][1]["success"] is False
+    assert response.data["items"][1]["outer_order_id"] == "TB40404"
+    assert "聚水潭未找到指定订单" in response.data["items"][1]["error"]
+    assert Path(response.data["context_path"]).exists()
+
+
+def test_normalize_orders_supports_text_input(tmp_path: Path) -> None:
+    input_path = tmp_path / "orders.txt"
+    input_path.write_text("TB10001\nTB10002\n\nTB10001\n", encoding="utf-8")
+
+    orders, resolved_input = order._normalize_orders(order_ids=[], input_path=str(input_path), limit=2)
+
+    assert orders == ["TB10001", "TB10002"]
+    assert resolved_input == str(input_path.resolve())

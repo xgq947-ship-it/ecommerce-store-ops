@@ -1,3 +1,4 @@
+import csv
 import json
 import html
 import re
@@ -87,6 +88,52 @@ LOGISTICS_STATUS_KEYS = (
 )
 SIGNED_KEYWORDS = ("已签收", "签收", "妥投", "已妥投", "delivered", "signed")
 
+ORDER_INPUT_HEADER_CANDIDATES = {
+    "order",
+    "order_id",
+    "outer_order_id",
+    "order_no",
+    "订单号",
+    "订单编号",
+    "订单id",
+}
+
+
+def _load_orders_from_input_path(path: Path) -> list[str]:
+    suffix = path.suffix.lower()
+    if suffix == ".json":
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        orders = payload.get("orders")
+        if not isinstance(orders, list):
+            raise RuntimeError(f"{path.name} 缺少 orders 数组")
+        return [str(order).strip() for order in orders if str(order).strip()]
+
+    if suffix in {".txt", ".text"}:
+        return [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+    if suffix == ".csv":
+        rows: list[str] = []
+        with path.open("r", encoding="utf-8-sig", newline="") as handle:
+            reader = csv.reader(handle)
+            for index, row in enumerate(reader):
+                first = next((str(cell).strip() for cell in row if str(cell).strip()), "")
+                if not first:
+                    continue
+                if index == 0 and first.lower() in ORDER_INPUT_HEADER_CANDIDATES:
+                    continue
+                rows.append(first)
+        return rows
+
+    raise RuntimeError(f"不支持的输入文件格式：{path.suffix or path.name}。目前支持 JSON/TXT/CSV")
+
+
+def _normalize_identifier_list(values: str | list[str] | None) -> list[str]:
+    if values is None:
+        return []
+    if isinstance(values, str):
+        values = [values]
+    return [str(value).strip() for value in values if str(value).strip()]
+
 
 def _normalize_orders(
     *,
@@ -99,21 +146,13 @@ def _normalize_orders(
 
     if input_path:
         path = Path(input_path).expanduser().resolve()
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        orders = payload.get("orders")
-        if not isinstance(orders, list):
-            raise RuntimeError(f"{path.name} 缺少 orders 数组")
-        normalized.extend(str(order).strip() for order in orders if str(order).strip())
+        normalized.extend(_load_orders_from_input_path(path))
         resolved_input = str(path)
 
     if not normalized:
         default_path = Path.cwd() / DEFAULT_INPUT_PATH
         if default_path.exists():
-            payload = json.loads(default_path.read_text(encoding="utf-8"))
-            orders = payload.get("orders")
-            if not isinstance(orders, list):
-                raise RuntimeError(f"{default_path.name} 缺少 orders 数组")
-            normalized.extend(str(order).strip() for order in orders if str(order).strip())
+            normalized.extend(_load_orders_from_input_path(default_path))
             resolved_input = str(default_path.resolve())
 
     unique_orders: list[str] = []
@@ -401,8 +440,18 @@ def _query_order_rows_by_identifier(
     cookie: str,
     order_id: str | None,
     outer_order_id: str | None,
+    identifier: str | None = None,
     form_template: dict[str, str] | None = None,
 ) -> tuple[list[dict[str, Any]], str]:
+    if identifier:
+        rows = _query_order_rows(client, url, cookie, OUTER_ORDER_FILTER_KEY, identifier, form_template)
+        if rows:
+            return rows, OUTER_ORDER_FILTER_KEY
+        for key in ORDER_ID_FILTER_KEYS:
+            rows = _query_order_rows(client, url, cookie, key, identifier, form_template)
+            if rows:
+                return rows, key
+        return [], OUTER_ORDER_FILTER_KEY
     if outer_order_id:
         return _query_order_rows(client, url, cookie, OUTER_ORDER_FILTER_KEY, outer_order_id, form_template), OUTER_ORDER_FILTER_KEY
     if not order_id:
@@ -759,84 +808,244 @@ def learn_order_logistics(*, order_id: str | None = None, outer_order_id: str | 
     )
 
 
-def run_order_logistics(*, order_id: str | None = None, outer_order_id: str | None = None) -> CommandResponse:
-    session = get_scene_manager().ensure_scene(JST_SITE, JST_ORDER_SCENE)
-    headers = dict(session.get("headers") or {})
-    cookie = str(headers.get("Cookie") or headers.get("cookie") or "").strip()
-    if not cookie:
-        raise RuntimeError("SessionHub 已返回 session，但缺少 Cookie。请重新捕获聚水潭会话。")
-    url = str(session.get("url") or f"https://www.erp321.com{DEFAULT_JST_ORDER_PATH}").strip()
-    form_template = _extract_form_template(session)
+def _run_single_order_logistics(
+    client: httpx.Client,
+    *,
+    session: dict[str, Any],
+    url: str,
+    cookie: str,
+    form_template: dict[str, str],
+    order_id: str | None = None,
+    outer_order_id: str | None = None,
+    identifier: str | None = None,
+) -> dict[str, Any]:
+    rows, filter_key = _query_order_rows_by_identifier(
+        client,
+        url,
+        cookie,
+        order_id,
+        outer_order_id,
+        identifier=identifier,
+        form_template=form_template,
+    )
+    if not rows:
+        raise RuntimeError("聚水潭未找到指定订单")
+    if len(rows) > 1:
+        raise RuntimeError(f"聚水潭返回 {len(rows)} 条订单，请换更精确的订单号")
 
-    with build_client(follow_redirects=True, timeout=60.0) as client:
-        rows, filter_key = _query_order_rows_by_identifier(client, url, cookie, order_id, outer_order_id, form_template)
-        if not rows:
-            raise RuntimeError("聚水潭未找到指定订单")
-        if len(rows) > 1:
-            raise RuntimeError(f"聚水潭返回 {len(rows)} 条订单，请换更精确的订单号")
-        row = rows[0]
-        logistics_no = _first_text(row, LOGISTICS_NUMBER_KEYS)
-        company = _first_text(row, LOGISTICS_COMPANY_KEYS)
-        status_text = _first_text(row, LOGISTICS_STATUS_KEYS)
-        trace_events: list[dict[str, Any]] = []
-        template = _load_logistics_template()
-        trace_source = "order_list"
-        if logistics_no:
-            try:
-                trace_events = _request_trace_from_panel(client, session, logistics_no, company)
-                if trace_events:
-                    trace_source = "look_express_panel"
-            except Exception:
-                trace_source = "look_express_panel_failed"
-        if not trace_events and template and logistics_no:
-            try:
-                trace_events = _request_trace_from_template(client, template, logistics_no, row)
-                if trace_events:
-                    trace_source = JST_ORDER_LOGISTICS_SCENE
-            except Exception:
-                trace_source = "order_list_template_failed"
-        if not status_text and trace_events:
-            first_event = trace_events[0]
-            status_text = str(first_event.get("StatusSrc") or first_event.get("status") or "").strip()
+    row = rows[0]
+    logistics_no = _first_text(row, LOGISTICS_NUMBER_KEYS)
+    company = _first_text(row, LOGISTICS_COMPANY_KEYS)
+    status_text = _first_text(row, LOGISTICS_STATUS_KEYS)
+    trace_events: list[dict[str, Any]] = []
+    template = _load_logistics_template()
+    trace_source = "order_list"
+    if logistics_no:
+        try:
+            trace_events = _request_trace_from_panel(client, session, logistics_no, company)
+            if trace_events:
+                trace_source = "look_express_panel"
+        except Exception:
+            trace_source = "look_express_panel_failed"
+    if not trace_events and template and logistics_no:
+        try:
+            trace_events = _request_trace_from_template(client, template, logistics_no, row)
+            if trace_events:
+                trace_source = JST_ORDER_LOGISTICS_SCENE
+        except Exception:
+            trace_source = "order_list_template_failed"
+    if not status_text and trace_events:
+        first_event = trace_events[0]
+        status_text = str(first_event.get("StatusSrc") or first_event.get("status") or "").strip()
 
     signed = _guess_signed(status_text, trace_events)
+    return {
+        "order_id": order_id,
+        "outer_order_id": outer_order_id,
+        "identifier": identifier,
+        "matched_filter": filter_key,
+        "o_id": str(row.get("o_id") or ""),
+        "so_id": str(row.get("so_id") or ""),
+        "raw_so_id": str(row.get("raw_so_id") or ""),
+        "pre_so_id": str(row.get("pre_so_id") or ""),
+        "logistics_no": logistics_no,
+        "logistics_company": company,
+        "logistics_status": status_text,
+        "signed": signed,
+        "send_date": str(row.get("send_date") or ""),
+        "plan_delivery_date": str(row.get("plan_delivery_date") or ""),
+        "sign_time": str(row.get("sign_time") or ""),
+        "receiver_area": " ".join(
+            str(row.get(key) or "").strip()
+            for key in ("receiver_state", "receiver_city", "receiver_district")
+            if str(row.get(key) or "").strip()
+        ),
+        "trace_source": trace_source,
+        "trace_events": trace_events,
+        "scene": JST_ORDER_SCENE,
+        "logistics_scene": JST_ORDER_LOGISTICS_SCENE if template else None,
+        "next_learn_command": None if template else "ops --json jst order logistics learn --outer-order-id <订单号>",
+    }
+
+
+def run_order_logistics(
+    *,
+    order_id: str | None = None,
+    outer_order_id: str | None = None,
+    order_ids: list[str] | None = None,
+    outer_order_ids: list[str] | None = None,
+    input_path: str | None = None,
+    limit: int | None = None,
+) -> CommandResponse:
+    explicit_order_ids = _normalize_identifier_list(order_ids or order_id)
+    explicit_outer_order_ids = _normalize_identifier_list(outer_order_ids or outer_order_id)
+
+    if not explicit_order_ids and not explicit_outer_order_ids and not input_path:
+        raise RuntimeError("请传入 --order-id、--outer-order-id 或 --input")
+
+    input_orders: list[str] = []
+    resolved_input: str | None = None
+    if input_path:
+        input_orders, resolved_input = _normalize_orders(order_ids=[], input_path=input_path, limit=None)
+    requests: list[dict[str, str]] = []
+    requests.extend({"order_id": value} for value in explicit_order_ids)
+    requests.extend({"outer_order_id": value} for value in explicit_outer_order_ids)
+    requests.extend({"identifier": value} for value in input_orders)
+
+    if limit is not None:
+        if limit <= 0:
+            raise RuntimeError("--limit 必须大于 0")
+        requests = requests[:limit]
+
+    if not requests:
+        raise RuntimeError("未找到可查询的订单号")
+
+    is_single_query = len(requests) == 1 and resolved_input is None
+    if is_single_query:
+        session = get_scene_manager().ensure_scene(JST_SITE, JST_ORDER_SCENE)
+        headers = dict(session.get("headers") or {})
+        cookie = str(headers.get("Cookie") or headers.get("cookie") or "").strip()
+        if not cookie:
+            raise RuntimeError("SessionHub 已返回 session，但缺少 Cookie。请重新捕获聚水潭会话。")
+        url = str(session.get("url") or f"https://www.erp321.com{DEFAULT_JST_ORDER_PATH}").strip()
+        form_template = _extract_form_template(session)
+        with build_client(follow_redirects=True, timeout=60.0) as client:
+            item = _run_single_order_logistics(
+                client,
+                session=session,
+                url=url,
+                cookie=cookie,
+                form_template=form_template,
+                order_id=requests[0].get("order_id"),
+                outer_order_id=requests[0].get("outer_order_id"),
+            )
+        context_path = write_runtime_context(
+            task_name="jst_order_logistics_run",
+            status="success",
+            inputs={
+                "order_id": item.get("order_id"),
+                "outer_order_id": item.get("outer_order_id"),
+                "filter_key": item.get("matched_filter"),
+            },
+            outputs={
+                "logistics_no": item.get("logistics_no"),
+                "company": item.get("logistics_company"),
+                "status": item.get("logistics_status"),
+                "signed": item.get("signed"),
+                "trace_count": len(item.get("trace_events") or []),
+            },
+        )
+        item["context_path"] = str(context_path)
+        return CommandResponse(
+            success=True,
+            platform="jst",
+            command="order logistics",
+            data=item,
+        )
+
+    retried_for_auth = False
+    auth_refresh_applied = False
+    while True:
+        session = get_scene_manager().ensure_scene(JST_SITE, JST_ORDER_SCENE)
+        headers = dict(session.get("headers") or {})
+        cookie = str(headers.get("Cookie") or headers.get("cookie") or "").strip()
+        if not cookie:
+            raise RuntimeError("SessionHub 已返回 session，但缺少 Cookie。请重新捕获聚水潭会话。")
+        url = str(session.get("url") or f"https://www.erp321.com{DEFAULT_JST_ORDER_PATH}").strip()
+        form_template = _extract_form_template(session)
+        results: list[dict[str, Any]] = []
+
+        with build_client(follow_redirects=True, timeout=60.0) as client:
+            for request in requests:
+                try:
+                    item = _run_single_order_logistics(
+                        client,
+                        session=session,
+                        url=url,
+                        cookie=cookie,
+                        form_template=form_template,
+                        order_id=request.get("order_id"),
+                        outer_order_id=request.get("outer_order_id"),
+                        identifier=request.get("identifier"),
+                    )
+                    item["success"] = True
+                    results.append(item)
+                except Exception as exc:
+                    reason = str(exc)
+                    results.append(
+                        {
+                            "order_id": request.get("order_id"),
+                            "outer_order_id": request.get("outer_order_id"),
+                            "identifier": request.get("identifier"),
+                            "success": False,
+                            "error": reason,
+                            "auth_required": is_probable_auth_error(reason),
+                        }
+                    )
+
+        auth_failures = [row for row in results if row.get("auth_required")]
+        if auth_failures and not retried_for_auth and not any(row.get("success") for row in results):
+            require_interactive_recovery(JST_ORDER_SCENE)
+            get_scene_manager().capture_scene(JST_SITE, JST_ORDER_SCENE)
+            mark_scene_refreshed(JST_ORDER_SCENE)
+            retried_for_auth = True
+            auth_refresh_applied = True
+            continue
+        break
+
+    success_count = sum(1 for row in results if row.get("success"))
+    failed_count = len(results) - success_count
     context_path = write_runtime_context(
-        task_name="jst_order_logistics_run",
-        status="success",
-        inputs={"order_id": order_id, "outer_order_id": outer_order_id, "filter_key": filter_key},
-        outputs={"logistics_no": logistics_no, "company": company, "status": status_text, "signed": signed, "trace_count": len(trace_events)},
+        task_name="jst_order_logistics_batch_run",
+        status="success" if failed_count == 0 else "partial_success",
+        inputs={
+            "order_ids": explicit_order_ids,
+            "outer_order_ids": explicit_outer_order_ids,
+            "input_path": resolved_input,
+            "limit": limit,
+        },
+        outputs={"total": len(results), "success": success_count, "failed": failed_count},
     )
+    data: dict[str, Any] = {
+        "site": JST_SITE,
+        "scene": JST_ORDER_SCENE,
+        "session_source": session.get("source", "sessionhub"),
+        "input_path": resolved_input,
+        "summary": {
+            "total": len(results),
+            "success": success_count,
+            "failed": failed_count,
+        },
+        "items": results,
+        "context_path": str(context_path),
+    }
+    if auth_refresh_applied:
+        data["auth_refresh_applied"] = True
     return CommandResponse(
-        success=True,
+        success=failed_count == 0,
         platform="jst",
         command="order logistics",
-        data={
-            "order_id": order_id,
-            "outer_order_id": outer_order_id,
-            "matched_filter": filter_key,
-            "o_id": str(row.get("o_id") or ""),
-            "so_id": str(row.get("so_id") or ""),
-            "raw_so_id": str(row.get("raw_so_id") or ""),
-            "pre_so_id": str(row.get("pre_so_id") or ""),
-            "logistics_no": logistics_no,
-            "logistics_company": company,
-            "logistics_status": status_text,
-            "signed": signed,
-            "send_date": str(row.get("send_date") or ""),
-            "plan_delivery_date": str(row.get("plan_delivery_date") or ""),
-            "sign_time": str(row.get("sign_time") or ""),
-            "receiver_area": " ".join(
-                str(row.get(key) or "").strip()
-                for key in ("receiver_state", "receiver_city", "receiver_district")
-                if str(row.get(key) or "").strip()
-            ),
-            "trace_source": trace_source,
-            "trace_events": trace_events,
-            "scene": JST_ORDER_SCENE,
-            "logistics_scene": JST_ORDER_LOGISTICS_SCENE if template else None,
-            "context_path": str(context_path),
-            "next_learn_command": None if template else "ops --json jst order logistics learn --outer-order-id <订单号>",
-        },
+        data=data,
     )
 
 

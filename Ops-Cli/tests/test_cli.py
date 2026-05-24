@@ -518,6 +518,8 @@ def test_jst_order_logistics_help() -> None:
     assert result.exit_code == 0
     assert "--order-id" in result.stdout
     assert "--outer-order-id" in result.stdout
+    assert "--input" in result.stdout
+    assert "--limit" in result.stdout
     assert "learn" in result.stdout
 
 
@@ -528,7 +530,7 @@ def test_jst_order_logistics_json(monkeypatch) -> None:
             platform="jst",
             command="order logistics",
             data={
-                "outer_order_id": kwargs["outer_order_id"],
+                "outer_order_id": kwargs["outer_order_ids"][0],
                 "logistics_no": "SF123456",
                 "logistics_company": "顺丰速运",
                 "signed": True,
@@ -543,6 +545,57 @@ def test_jst_order_logistics_json(monkeypatch) -> None:
     assert '"command": "order logistics"' in result.stdout
     assert '"logistics_no": "SF123456"' in result.stdout
     assert '"signed": true' in result.stdout
+
+
+def test_jst_order_logistics_batch_json(monkeypatch, tmp_path) -> None:
+    input_path = tmp_path / "orders.txt"
+    input_path.write_text("TB003\nTB004\n", encoding="utf-8")
+
+    def fake_run_order_logistics(**kwargs) -> CommandResponse:
+        assert kwargs["order_ids"] == ["SO001"]
+        assert kwargs["outer_order_ids"] == ["TB001", "TB002"]
+        assert kwargs["input_path"] == str(input_path)
+        assert kwargs["limit"] == 3
+        return CommandResponse(
+            success=False,
+            platform="jst",
+            command="order logistics",
+            data={
+                "summary": {"total": 3, "success": 2, "failed": 1},
+                "items": [
+                    {"outer_order_id": "TB001", "success": True},
+                    {"outer_order_id": "TB002", "success": False, "error": "聚水潭未找到指定订单"},
+                    {"order_id": "SO001", "success": True},
+                ],
+            },
+        )
+
+    monkeypatch.setattr("ops_cli.cli.run_jst_order_logistics", fake_run_order_logistics)
+
+    result = runner.invoke(
+        app,
+        [
+            "--json",
+            "jst",
+            "order",
+            "logistics",
+            "--outer-order-id",
+            "TB001",
+            "--outer-order-id",
+            "TB002",
+            "--order-id",
+            "SO001",
+            "--input",
+            str(input_path),
+            "--limit",
+            "3",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert '"total": 3' in result.stdout
+    assert '"failed": 1' in result.stdout
+    assert '"items"' in result.stdout
 
 
 def test_jst_order_logistics_learn_json(monkeypatch) -> None:

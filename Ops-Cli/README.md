@@ -100,6 +100,8 @@ ops --json jst order label --input /path/to/latest_brush_orders.json
 ops --json jst order label --input /path/to/latest_brush_orders.json --limit 10
 ops --json jst order label --input /path/to/latest_brush_orders.json --execute
 ops --json jst order remark --order-id 123456 --remark-text "需要填写的卖家备注" --execute
+ops --json jst order logistics --outer-order-id TB001 --outer-order-id TB002
+ops --json jst order logistics --input /path/to/orders.txt --limit 10
 ops --json jst order reimburse --outer-order-id 3302371490526182153 --principal-total 965 --payout-total 140 --product-code SUZBHLYZHH1001 --workbook-file /path/to/register.xlsx
 ops --json jst order reimburse --outer-order-id 3302371490526182153 --principal-total 965 --payout-total 140 --product-code SUZBHLYZHH1001 --workbook-file /path/to/register.xlsx --execute
 ops --json jst browser learn --scene shop-goods-import

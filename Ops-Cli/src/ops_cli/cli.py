@@ -318,16 +318,28 @@ def jst_order_remark(
 @jst_order_logistics_app.callback(invoke_without_command=True)
 def jst_order_logistics(
     ctx: typer.Context,
-    order_id: str | None = typer.Option(None, "--order-id", help="JST order number."),
-    outer_order_id: str | None = typer.Option(None, "--outer-order-id", help="External platform order number."),
+    order_id: list[str] = typer.Option(None, "--order-id", help="JST order number. Repeatable."),
+    outer_order_id: list[str] = typer.Option(None, "--outer-order-id", help="External platform order number. Repeatable."),
+    input_path: str | None = typer.Option(None, "--input", help="Order input file. Supports JSON/TXT/CSV."),
+    limit: int | None = typer.Option(None, "--limit", help="Only query the first N orders."),
 ) -> None:
     if ctx.invoked_subcommand is not None:
         return
     _execute(
         ctx,
         command_name="ops jst order logistics",
-        params={"order_id": order_id, "outer_order_id": outer_order_id},
-        handler=lambda: run_jst_order_logistics(order_id=order_id, outer_order_id=outer_order_id),
+        params={
+            "order_ids": order_id,
+            "outer_order_ids": outer_order_id,
+            "input_path": input_path,
+            "limit": limit,
+        },
+        handler=lambda: run_jst_order_logistics(
+            order_ids=order_id,
+            outer_order_ids=outer_order_id,
+            input_path=input_path,
+            limit=limit,
+        ),
     )
 
 

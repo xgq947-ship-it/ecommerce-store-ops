@@ -63,6 +63,15 @@ ops --json ...
 
 推广账单文件名统一为 `智多星推广账单_YYYY-MM.xlsx` 和 `万象台推广账单_YYYY-MM.csv`；智多星文件为平台导出的完整资金流水原表，由编排层基于账期筛选汇总，不在 CLI 层删行；如果平台后续返回 Excel 二进制，Ops-Cli 会按真实内容自动保留 `.xlsx`。
 
+订单物流查询支持单笔与批量输入：
+
+```bash
+ops --json jst order logistics --outer-order-id TB001 --outer-order-id TB002
+ops --json jst order logistics --input /path/to/orders.txt --limit 10
+```
+
+批量返回 `data.summary` 和 `data.items`；单项失败保留在 `items[].error` 中，便于业务层汇总而不中断整批查询。
+
 ## 外部编排项目应做什么
 
 - 只负责组装业务参数
