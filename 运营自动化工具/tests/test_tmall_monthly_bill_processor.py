@@ -273,6 +273,7 @@ def test_statement_auto_download_uses_last_month_for_full_previous_month_range(m
 def test_process_keeps_source_files_in_place_after_generating_archive_workbook(tmp_path: Path, monkeypatch) -> None:
     bill_dir = tmp_path / "downloads"
     work_dir = tmp_path / "workdir"
+    output_dir = tmp_path / "desktop"
     bill_dir.mkdir()
     work_dir.mkdir()
 
@@ -364,6 +365,7 @@ def test_process_keeps_source_files_in_place_after_generating_archive_workbook(t
                 sheet.append(row)
 
     monkeypatch.setattr(tmall_main, "auto_download_bills_if_needed", lambda args, bill_dir: {"auto_download_attempted": False})
+    monkeypatch.setattr(tmall_main, "DEFAULT_OUTPUT_DIR", output_dir)
     monkeypatch.setattr(tmall_main, "load_source_module", lambda path: FakeSource)
     monkeypatch.setattr(
         tmall_main,
@@ -403,7 +405,7 @@ def test_process_keeps_source_files_in_place_after_generating_archive_workbook(t
 
     payload = tmall_main.process(args)
 
-    output_path = work_dir / "猫超月账单数据" / "4月对账数据" / "猫超4月账单数据表格.xlsx"
+    output_path = output_dir / "猫超4月账单数据表格.xlsx"
     assert output_path.exists()
     assert bill_file.exists()
     assert statement_file.exists()
@@ -445,3 +447,25 @@ def test_download_promotion_bill_uses_existing_download_before_cli(tmp_path: Pat
 
     assert found == expected.resolve()
     assert calls["count"] == 0
+
+
+def test_download_promotion_bill_enables_interactive_recovery_for_cli(tmp_path: Path, monkeypatch) -> None:
+    bill_dir = tmp_path / "downloads"
+    bill_dir.mkdir()
+    generated_dir = tmp_path / "generated"
+    generated_dir.mkdir()
+    expected = generated_dir / "智多星推广账单_2026-04.xlsx"
+    expected.write_bytes(b"downloaded")
+    observed: dict[str, object] = {}
+
+    def fake_run_ops_json(args, **kwargs):
+        observed["args"] = args
+        observed["kwargs"] = kwargs
+        return {"data": {"downloaded_files": [str(expected)]}}
+
+    monkeypatch.setattr(tmall_main, "run_ops_json", fake_run_ops_json)
+
+    found = tmall_main.download_promotion_bill("zdx", "2026-04-01", "2026-04-30", bill_dir)
+
+    assert found == expected.resolve()
+    assert observed["kwargs"] == {"interactive_recovery": True}

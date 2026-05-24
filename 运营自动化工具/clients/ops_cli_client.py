@@ -40,15 +40,17 @@ def _command_prefix() -> list[str]:
     return [sys.executable, "-m", "ops_cli.cli"]
 
 
-def run_ops_json(args: list[str]) -> dict[str, Any]:
-    json_args = args if "--json" in args else ["--json", *args]
-    completed = subprocess.run(
-        [*_command_prefix(), *json_args],
+def _run_command(args: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [*_command_prefix(), *args],
         cwd=ops_cli_root(),
         text=True,
         capture_output=True,
         check=False,
     )
+
+
+def _parse_payload(completed: subprocess.CompletedProcess[str]) -> dict[str, Any]:
     stdout = completed.stdout.strip()
     stderr = completed.stderr.strip()
     if not stdout:
@@ -57,6 +59,42 @@ def run_ops_json(args: list[str]) -> dict[str, Any]:
         payload = json.loads(stdout)
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"Ops-Cli 返回非 JSON：{stdout[:500]}") from exc
+    if isinstance(payload, dict):
+        payload["_ops_stdout"] = stdout
+        payload["_ops_stderr"] = stderr
+    return payload
+
+
+def _should_retry_interactively(payload: dict[str, Any], *, interactive_recovery: bool) -> bool:
+    if not interactive_recovery or not sys.stdin.isatty():
+        return False
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return False
+    return str(data.get("error_code") or "") == "AUTH_REQUIRED"
+
+
+def _default_interactive_recovery(args: list[str]) -> bool:
+    if "--dry-run" in args:
+        return False
+    return not ("auth" in args and "check" in args)
+
+
+def run_ops_json(args: list[str], *, interactive_recovery: bool | None = None) -> dict[str, Any]:
+    json_args = args if "--json" in args else ["--json", *args]
+    allow_interactive_recovery = (
+        _default_interactive_recovery(json_args)
+        if interactive_recovery is None
+        else interactive_recovery and _default_interactive_recovery(json_args)
+    )
+    completed = _run_command(json_args)
+    payload = _parse_payload(completed)
+    if completed.returncode != 0 and isinstance(payload, dict) and _should_retry_interactively(
+        payload,
+        interactive_recovery=allow_interactive_recovery,
+    ):
+        completed = _run_command(["--interactive-login", *json_args])
+        payload = _parse_payload(completed)
     if completed.returncode != 0:
         if isinstance(payload, dict):
             data = payload.get("data") or {}
@@ -65,7 +103,4 @@ def run_ops_json(args: list[str]) -> dict[str, Any]:
                 f"{data.get('error', '未知错误')}；context={data.get('context_path', '')}"
             )
         raise RuntimeError("Ops-Cli 执行失败且响应结构不是对象")
-    if isinstance(payload, dict):
-        payload["_ops_stdout"] = stdout
-        payload["_ops_stderr"] = stderr
     return payload

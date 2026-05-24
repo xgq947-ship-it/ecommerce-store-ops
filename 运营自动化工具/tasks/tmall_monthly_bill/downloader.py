@@ -44,7 +44,7 @@ def main() -> int:
     if args.dry_run:
         command.append("--dry-run")
 
-    payload = run_ops_json(command)
+    payload = run_ops_json(command, interactive_recovery=not args.dry_run)
     result = {
         "success": bool(payload.get("success")),
         "task": "tmcs_bill_download",

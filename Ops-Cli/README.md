@@ -134,10 +134,10 @@ ops --json jst shop-goods import --file /path/to/jst_shop_goods_import.xlsx --sh
 SESSIONHUB_ROOT=/Users/dasheng/Desktop/电商Brain/02-运营店铺/Ops-Cli/sessionhub
 PRIMARY_CHROME_CDP_URL=
 JST_ORDER_STATS_STORE=（猫超）福安市启明工贸有限公司（肖国清）
-JST_PRODUCT_SOURCE_PATH=/Users/dasheng/Downloads/聚水潭商品资料（最新）.xlsx
+JST_PRODUCT_SOURCE_PATH=/Users/dasheng/Desktop/电商Brain/02-运营店铺/主数据/聚水潭商品资料（最新）.xlsx
 JST_PRODUCT_KEEP_BRANDS=奥克斯,苏泊尔
 TMCS_PRODUCT_IMPORT_PATH=/Users/dasheng/Downloads/猫超商品列表导出.xlsx
-TMCS_PRODUCT_LATEST_PATH=/Users/dasheng/Downloads/猫超商品列表导出 (最新）.xlsx
+TMCS_PRODUCT_LATEST_PATH=/Users/dasheng/Desktop/电商Brain/02-运营店铺/主数据/猫超商品列表导出 (最新）.xlsx
 TMCS_BILL_DOWNLOAD_DIR=/Users/dasheng/Downloads
 ```
 

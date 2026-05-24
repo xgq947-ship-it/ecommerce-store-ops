@@ -36,4 +36,5 @@ ops --json ...
 - `Ops-Cli` 返回非 0：任务直接失败
 - `stdout` 非 JSON：任务直接失败
 - 业务层不得自行 fallback 到直连平台
-- 终端运行时平台 session 失效可由 Ops-Cli 自行拉起 `9222` 等待登录；无 TTY 运行快速失败并保留 context
+- 真实平台调用在交互终端返回 `AUTH_REQUIRED` 时，`clients/ops_cli_client.py` 会以 `--interactive-login` 重试一次；拉起 `9222`、等待登录和刷新 scene 仍由 `Ops-Cli` 执行
+- `--dry-run`、`auth check` 与无 TTY 运行不触发交互恢复，失败时保留 context

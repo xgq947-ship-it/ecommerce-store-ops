@@ -49,4 +49,5 @@
 - `sessionhub/` 目录已迁移到 `Ops-Cli/sessionhub`
 - 本项目不再保存 SessionHub 代码或会话资产
 - 平台消费权和资产维护权统一归 `Ops-Cli`
-- 交互登录恢复由 `Ops-Cli` 使用 `9222` 执行；无 TTY 失败由业务层消费 `AUTH_REQUIRED` 结果
+- 业务公共客户端可依据结构化 `AUTH_REQUIRED` 结果追加 `--interactive-login` 重试一次；交互登录恢复仍由 `Ops-Cli` 使用 `9222` 执行
+- `--dry-run`、`auth check` 与无 TTY 失败不进入交互恢复

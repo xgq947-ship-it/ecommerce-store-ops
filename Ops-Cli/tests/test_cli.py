@@ -178,7 +178,7 @@ def test_tmcs_product_sync_json(monkeypatch) -> None:
             success=True,
             platform="tmcs",
             command="product sync",
-            data={"new_rows": 3, "output_path": "/Users/dasheng/Downloads/猫超商品列表导出 (最新）.xlsx"},
+            data={"new_rows": 3, "output_path": "/Users/dasheng/Desktop/电商Brain/02-运营店铺/主数据/猫超商品列表导出 (最新）.xlsx"},
         )
 
     monkeypatch.setattr("ops_cli.cli.run_tmcs_product_sync", fake_run_tmcs_product_sync)
@@ -830,11 +830,11 @@ def test_jst_product_sync_json(monkeypatch) -> None:
             platform="jst",
             command="product sync",
             data={
-                "source": "/Users/dasheng/Downloads/聚水潭商品资料（最新）.xlsx",
+                "source": "/Users/dasheng/Desktop/电商Brain/02-运营店铺/主数据/聚水潭商品资料（最新）.xlsx",
                 "used_backend_export": True,
                 "downloaded": True,
                 "keep_brands": ["奥克斯", "苏泊尔"],
-                "output_path": "/Users/dasheng/Downloads/聚水潭商品资料（最新）.xlsx",
+                "output_path": "/Users/dasheng/Desktop/电商Brain/02-运营店铺/主数据/聚水潭商品资料（最新）.xlsx",
                 "scene": "product_export",
             },
         )
@@ -855,7 +855,7 @@ def test_jst_product_sync_dry_run_json(monkeypatch) -> None:
             platform="jst",
             command="product sync",
             data={
-                "source": "/Users/dasheng/Downloads/聚水潭商品资料（最新）.xlsx",
+                "source": "/Users/dasheng/Desktop/电商Brain/02-运营店铺/主数据/聚水潭商品资料（最新）.xlsx",
                 "used_backend_export": True,
                 "downloaded": False,
                 "keep_brands": ["奥克斯", "苏泊尔"],

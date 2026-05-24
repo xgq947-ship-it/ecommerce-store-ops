@@ -192,7 +192,13 @@ def read_current_batch(path: Path) -> BatchInfo:
     )
 
 
-def ops_reimburse_payload(batch: BatchInfo, order: BatchOrder, *, execute: bool = False) -> dict[str, Any]:
+def ops_reimburse_payload(
+    batch: BatchInfo,
+    order: BatchOrder,
+    *,
+    execute: bool = False,
+    interactive_recovery: bool = False,
+) -> dict[str, Any]:
     command = [
         "--json",
         "jst",
@@ -213,7 +219,7 @@ def ops_reimburse_payload(batch: BatchInfo, order: BatchOrder, *, execute: bool 
     ]
     if execute:
         command.append("--execute")
-    payload = run_ops_json(command)
+    payload = run_ops_json(command, interactive_recovery=interactive_recovery)
     data = payload.get("data") if isinstance(payload, dict) else None
     if not isinstance(data, dict):
         raise RuntimeError(f"Ops-Cli 返回结构异常：{payload}")
@@ -396,6 +402,7 @@ def choose_candidate(
     batch: BatchInfo,
     *,
     order_no: str | None = None,
+    interactive_recovery: bool = False,
 ) -> tuple[CandidateResult | None, list[CandidateResult]]:
     results: list[CandidateResult] = []
     orders = [item for item in batch.orders if not order_no or item.order_no == order_no]
@@ -405,7 +412,7 @@ def choose_candidate(
     for order in orders:
         result = CandidateResult(order=order)
         try:
-            data = ops_reimburse_payload(batch, order, execute=False)
+            data = ops_reimburse_payload(batch, order, execute=False, interactive_recovery=interactive_recovery)
         except Exception as exc:
             result.skip_reason = str(exc)
             results.append(result)
@@ -449,7 +456,11 @@ def main() -> int:
 
     print_batch_summary(batch)
     try:
-        candidate, checked = choose_candidate(batch, order_no=args.order_no)
+        candidate, checked = choose_candidate(
+            batch,
+            order_no=args.order_no,
+            interactive_recovery=not args.dry_run,
+        )
         skipped = [item for item in checked if item.skip_reason or item.has_existing_workorder]
         for item in skipped:
             reason = item.skip_reason or "该订单已存在运营特殊单报销打款工单"
@@ -475,7 +486,7 @@ def main() -> int:
             return 0
 
         # 创建动作由 Ops-Cli 内部再次检查，避免重复创建。
-        create_result = ops_reimburse_payload(batch, candidate.order, execute=True)
+        create_result = ops_reimburse_payload(batch, candidate.order, execute=True, interactive_recovery=True)
         if create_result.get("has_existing_workorder") and not create_result.get("submitted"):
             print("目标订单已存在报销工单，已停止创建。")
             logging.info("创建前复核发现工单已存在：%s", candidate.order.order_no)

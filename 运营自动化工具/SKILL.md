@@ -63,6 +63,8 @@ python browser_test.py ...
 - `刷单报销登记` -> `ops --json jst order reimburse`
 - `猫超账单下载阶段` -> `ops --json tmcs bill download`
 
+真实执行上述依赖平台 session 的任务时应在交互终端 / PTY 中启动入口；任一 `Ops-Cli` 调用返回 `AUTH_REQUIRED` 时，公共客户端会改用 `--interactive-login` 重试一次，由 `Ops-Cli` 完成 SessionHub 恢复。`--dry-run`、`auth check` 和无 TTY 执行不等待登录。
+
 ## 触发方式
 
 保留模糊触发，不要求精准匹配。

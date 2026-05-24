@@ -15,6 +15,7 @@
 - 保留原中文任务名和模糊触发
 - 具体平台动作统一通过 `subprocess -> ops --json ...`
 - 不再在业务任务里直接请求 JST / TMCS
+- 真实平台调用在交互终端遇到 `AUTH_REQUIRED` 时，公共客户端会改用 `--interactive-login` 重试一次；`--dry-run`、`auth check` 和无 TTY 执行不等待登录
 
 ## 统一架构
 

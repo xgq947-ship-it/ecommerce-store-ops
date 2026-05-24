@@ -53,6 +53,13 @@ DEFAULT_STATEMENT_TYPES = ("DISTRIBUTE_BILL", "DELEGATION_BILL")
 DEFAULT_LAST_MONTH_QUERY_GRACE_DAYS = 3
 
 
+def _required_download_scenes(*, download_statement_list: bool) -> tuple[str, ...]:
+    scenes = [TMCS_BILL_LIST_SCENE, TMCS_BILL_QUERY_SCENE]
+    if download_statement_list:
+        scenes.insert(1, TMCS_BILL_EXPORT_SCENE)
+    return tuple(scenes)
+
+
 def _template_path() -> Path:
     return Path.cwd() / TEMPLATE_PATH
 
@@ -428,7 +435,7 @@ def run_bill_download(
         template = _load_template(allow_refresh=False)
         output_dir = Path(str((template.get("defaults") or {}).get("output_dir") or get_config().tmcs_bill_download_dir)).expanduser()
         scene_warnings: list[str] = []
-        for scene_name in (TMCS_BILL_LIST_SCENE, TMCS_BILL_EXPORT_SCENE, TMCS_BILL_QUERY_SCENE):
+        for scene_name in _required_download_scenes(download_statement_list=download_statement_list):
             try:
                 check_scene_or_fail(TMCS_SITE, scene_name, next_command="ops tmcs bill learn")
             except RuntimeError as exc:
@@ -485,7 +492,7 @@ def run_bill_download(
         template = _load_template()
         output_dir = Path(str((template.get("defaults") or {}).get("output_dir") or get_config().tmcs_bill_download_dir)).expanduser()
         scene_warnings: list[str] = []
-        for scene_name in (TMCS_BILL_LIST_SCENE, TMCS_BILL_EXPORT_SCENE, TMCS_BILL_QUERY_SCENE):
+        for scene_name in _required_download_scenes(download_statement_list=download_statement_list):
             try:
                 check_scene_or_fail(TMCS_SITE, scene_name, next_command="ops tmcs bill learn")
             except RuntimeError as exc:

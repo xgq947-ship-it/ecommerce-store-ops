@@ -82,6 +82,42 @@ def test_tmcs_bill_download_last_month(tmp_path, monkeypatch) -> None:
     assert result.data["downloaded_files"][0].endswith(".xlsx")
 
 
+def test_tmcs_bill_download_without_statement_list_skips_export_scene(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data" / "tmcs").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "runtime" / "context").mkdir(parents=True, exist_ok=True)
+    template_path = tmp_path / "data" / "tmcs" / "bill_download_template.json"
+    template_path.write_text(
+        json.dumps(
+            {
+                "defaults": {"output_dir": str(tmp_path / "downloads")},
+                "bill_list": {"headers": {"cookie": "a=b"}, "cookies": [], "method": "GET", "url": "https://example.com/list"},
+                "statement_export": {"headers": {"cookie": "a=b"}, "cookies": [], "method": "POST", "url": "https://example.com/export", "post_data_form": {"_scm_token_": "x", "query": "{}"}},
+                "download_query": {"headers": {"cookie": "a=b"}, "cookies": [], "method": "POST", "url": "https://example.com/query", "post_data_json": {"parameters": [{"pageIndex": 1, "pageSize": 20}]}},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    checked: list[str] = []
+
+    def fake_check(_site, scene, **_kwargs):
+        checked.append(scene)
+        if scene == "statement_bill_dynamic_list":
+            raise RuntimeError("stale unused export scene")
+        return {"status": "valid"}
+
+    monkeypatch.setattr(bill, "check_scene_or_fail", fake_check)
+    monkeypatch.setattr(bill, "_list_bill_items", lambda **kwargs: [])
+    spec = get_capability("tmcs.bill.download")
+
+    with bind_capability_execution(spec, interactive_login=False):
+        result = bill.run_bill_download(last_month=True)
+
+    assert result.data["bill_count"] == 0
+    assert "statement_bill_dynamic_list" not in checked
+
+
 def test_tmcs_bill_download_statement_list(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     (tmp_path / "data" / "tmcs").mkdir(parents=True, exist_ok=True)

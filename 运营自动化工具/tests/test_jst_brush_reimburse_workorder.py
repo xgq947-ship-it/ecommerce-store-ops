@@ -48,9 +48,46 @@ class OpsReimburseTests(unittest.TestCase):
         self.assertEqual(candidate.item_name, "聚水潭商品名")
         self.assertEqual(len(checked), 1)
         command = run_ops.call_args.args[0]
+        self.assertEqual(run_ops.call_args.kwargs, {"interactive_recovery": False})
         self.assertIn("reimburse", command)
         self.assertIn("--outer-order-id", command)
         self.assertIn("OUTER001", command)
+
+    def test_real_candidate_check_enables_interactive_recovery(self) -> None:
+        order = reimburse.BatchOrder(
+            row_index=3,
+            brusher="唐杨",
+            brush_date="5月19日",
+            order_no="OUTER001",
+            order_amount=Decimal("95"),
+            commission_amount=Decimal("14"),
+            product_code="SKU001",
+            product_name="商品名",
+        )
+        batch = reimburse.BatchInfo(
+            workbook_path=Path("/tmp/登记表.xlsx"),
+            start_row=3,
+            end_row=3,
+            orders=[order],
+            principal_total=Decimal("95"),
+            payout_total=Decimal("14"),
+        )
+        payload = {
+            "success": True,
+            "data": {
+                "outer_order_id": "OUTER001",
+                "internal_order_id": "123",
+                "online_order_id": "LP001",
+                "item_name": "聚水潭商品名",
+                "has_existing_workorder": False,
+                "existing_detail": {},
+            },
+        }
+
+        with patch.object(reimburse, "run_ops_json", return_value=payload) as run_ops:
+            reimburse.choose_candidate(batch, interactive_recovery=True)
+
+        self.assertEqual(run_ops.call_args.kwargs, {"interactive_recovery": True})
 
 
 if __name__ == "__main__":

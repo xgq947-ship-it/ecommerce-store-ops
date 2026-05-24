@@ -23,12 +23,11 @@ from tasks.tmall_monthly_bill.services.promotion_service import write_promotion_
 from tasks.tmall_monthly_bill.services.reconciliation_service import write_reconciliation_sheet  # noqa: E402
 
 DEFAULT_WORK_DIR = get_path("maochao_work_dir")
+DEFAULT_OUTPUT_DIR = get_path("desktop_dir")
 DEFAULT_BILL_DIR = get_path("tmall_bill_download_dir")
 DEFAULT_STATEMENT_LIST = get_path("tmall_statement_list_file")
 INTERNAL_SOURCE_SCRIPT = Path(__file__).resolve().with_name("processor.py")
 INTERNAL_DOWNLOADER_SCRIPT = Path(__file__).resolve().with_name("downloader.py")
-EXTERNAL_SOURCE_SCRIPT = DEFAULT_WORK_DIR / "项目资料" / "脚本" / "process_maochao_bills.py"
-DEFAULT_SCRIPT_DIR = DEFAULT_WORK_DIR / "项目资料" / "脚本"
 DEFAULT_TABLE1_FILE = get_path("tmall_goods_master_file")
 DEFAULT_TABLE2_FILE = get_path("jst_product_master_file")
 SYSTEM_PYTHON = Path("/usr/bin/python3")
@@ -418,7 +417,8 @@ def download_promotion_bill(source_name: str, start: str, end: str, bill_dir: Pa
                 start,
                 "--end",
                 end,
-            ]
+            ],
+            interactive_recovery=True,
         )
         data = _ops_data(payload)
         downloaded_files = data.get("downloaded_files") or []
@@ -483,6 +483,7 @@ def compare_invoice_amount(source, statement_path: Path, invoice_header: list[st
 def process(args: argparse.Namespace) -> dict:
     bill_dir = Path(args.bill_dir).expanduser().resolve()
     work_dir = Path(args.work_dir).expanduser().resolve()
+    output_dir = DEFAULT_OUTPUT_DIR.expanduser().resolve()
     source_script = Path(args.source_script).expanduser().resolve()
     statement_path = Path(args.statement_list).expanduser().resolve()
 
@@ -505,9 +506,9 @@ def process(args: argparse.Namespace) -> dict:
 
     month = source.infer_month_from_bills(bill_files)
     main_sheet_name = source.MAIN_SHEET_TEMPLATE.format(month=month)
-    archive_dir = work_dir / source.ARCHIVE_ROOT_NAME / source.ARCHIVE_SUBDIR_TEMPLATE.format(month=month)
-    output_path = archive_dir / source.OUTPUT_TEMPLATE.format(month=month)
-    stale_output_path = work_dir / output_path.name
+    archive_dir = output_dir
+    output_path = output_dir / source.OUTPUT_TEMPLATE.format(month=month)
+    stale_output_path = output_path
 
     raw_header, raw_rows = source.build_combined_rows(bill_files)
     table1_mapping = source.build_table1_mapping(table1_path)
@@ -529,7 +530,7 @@ def process(args: argparse.Namespace) -> dict:
     promotion_paths: dict[str, str] = {}
 
     if not args.dry_run:
-        archive_dir.mkdir(parents=True, exist_ok=True)
+        output_dir.mkdir(parents=True, exist_ok=True)
         source.ensure_clean_target(output_path)
         if stale_output_path != output_path and stale_output_path.exists():
             source.ensure_clean_target(stale_output_path)
@@ -561,6 +562,7 @@ def process(args: argparse.Namespace) -> dict:
         "dry_run": args.dry_run,
         "bill_dir": str(bill_dir),
         "work_dir": str(work_dir),
+        "output_dir": str(output_dir),
         "source_script": str(source_script),
         "output_file": str(output_path),
         "archive_dir": str(archive_dir),

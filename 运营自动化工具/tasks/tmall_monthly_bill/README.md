@@ -18,7 +18,7 @@ python3 run.py 猫超账单整理 --dry-run --skip-auto-download
 - 若目录里已有 `HDB*.xlsx`、`对账单列表.xlsx`、推广账单源文件，则直接复用
 - 缺失时再调用 `Ops-Cli`
 - `Ops-Cli` 通过 SessionHub `9222` 专用浏览器执行真实下载
-- 在交互终端中，如果 scene 登录态失效，`Ops-Cli` 会自动拉起 `9222` 页面等待手动登录；登录后自动刷新目标页并只重试下载一次
+- 在交互终端中，如果账单或推广下载 scene 登录态失效，业务入口会自动转入 `--interactive-login`；`Ops-Cli` 拉起 `9222` 页面等待手动登录，登录后自动刷新目标页并重试一次
 - `--dry-run` 和无 TTY 执行不会等待登录；失效时返回状态或 `AUTH_REQUIRED`
 
 当前生成结果包含：
@@ -33,9 +33,9 @@ python3 run.py 猫超账单整理 --dry-run --skip-auto-download
 - `万相台推广数据表格`
 - `智多星推广数据表格`
 
-归档规则：
+输出规则：
 
-- 只把最终生成的 `猫超{month}月账单数据表格.xlsx` 写入 `猫超月账单数据/{month}月对账数据`
+- 最终生成的 `猫超{month}月账单数据表格.xlsx` 直接写到桌面
 - 原始 `HDB*.xlsx`
 - `对账单列表`
 - 推广账单源文件

@@ -16,7 +16,6 @@ from clients.ops_cli_client import run_ops_json  # noqa: E402
 from core.config_loader import get_path  # noqa: E402
 
 
-DEFAULT_WORK_DIR = get_path("maochao_work_dir")
 DEFAULT_IMPORT_FILE = get_path("tmall_goods_import_file")
 DEFAULT_SYNC_ROOT = get_path("ecommerce_brain_dir")
 LATEST_FILE_NAME = get_path("tmall_goods_master_file")
@@ -25,7 +24,6 @@ JST_FILE_NAME = get_path("jst_product_master_file")
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="更新猫超商品列表，并用聚水潭商品编码修正新增条码")
-    parser.add_argument("--work-dir", default=str(DEFAULT_WORK_DIR), help="保留参数兼容；实际由 Ops-Cli 读取其配置")
     parser.add_argument("--import-file", default=str(DEFAULT_IMPORT_FILE), help="保留参数兼容；实际由 Ops-Cli 读取其配置")
     parser.add_argument("--latest-file", default=str(LATEST_FILE_NAME), help="保留参数兼容")
     parser.add_argument("--jst-file", default=str(JST_FILE_NAME), help="保留参数兼容")

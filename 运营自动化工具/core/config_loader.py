@@ -20,17 +20,17 @@ DEFAULT_PATHS = {
         "/Users/dasheng/Library/Containers/com.tencent.xinWeChat/Data/Documents/"
         "xwechat_files/wxid_qkre05gkwlkd21_e73b/msg/file"
     ),
-    "jst_product_file": Path("/Users/dasheng/Desktop/电商Brain/01-产品库/聚水潭商品资料（最新）.xlsx"),
-    "jst_product_master_file": Path("/Users/dasheng/Desktop/电商Brain/01-产品库/聚水潭商品资料（最新）.xlsx"),
+    "jst_product_file": Path("/Users/dasheng/Desktop/电商Brain/02-运营店铺/主数据/聚水潭商品资料（最新）.xlsx"),
+    "jst_product_master_file": Path("/Users/dasheng/Desktop/电商Brain/02-运营店铺/主数据/聚水潭商品资料（最新）.xlsx"),
     "jst_product_import_file": Path("/Users/dasheng/Downloads/聚水潭商品资料（最新）.xlsx"),
     "maochao_goods_master_file": Path(
-        "/Users/dasheng/Desktop/电商Brain/06-猫超月对账自动化操作/猫超商品列表导出 (最新）.xlsx"
+        "/Users/dasheng/Desktop/电商Brain/02-运营店铺/主数据/猫超商品列表导出 (最新）.xlsx"
     ),
     "tmall_goods_master_file": Path(
-        "/Users/dasheng/Desktop/电商Brain/06-猫超月对账自动化操作/猫超商品列表导出 (最新）.xlsx"
+        "/Users/dasheng/Desktop/电商Brain/02-运营店铺/主数据/猫超商品列表导出 (最新）.xlsx"
     ),
-    "maochao_monthly_bill_dir": Path("/Users/dasheng/Desktop/电商Brain/06-猫超月对账自动化操作"),
-    "maochao_work_dir": Path("/Users/dasheng/Desktop/电商Brain/06-猫超月对账自动化操作"),
+    "maochao_monthly_bill_dir": Path("/Users/dasheng/Desktop"),
+    "maochao_work_dir": Path("/Users/dasheng/Desktop"),
     "downloads_dir": Path("/Users/dasheng/Downloads"),
     "tmall_bill_download_dir": Path("/Users/dasheng/Downloads"),
     "tmall_hdb_glob": Path("/Users/dasheng/Downloads/HDB*.xlsx"),

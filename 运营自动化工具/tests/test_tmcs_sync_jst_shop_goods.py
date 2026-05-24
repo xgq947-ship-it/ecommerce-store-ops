@@ -11,6 +11,7 @@ sys.path.insert(0, str(SKILL_DIR))
 
 from excel_builder import IMPORT_HEADERS, build_import_workbooks, build_rows  # noqa: E402
 from input_loader import load_item_ids_from_excel, parse_item_ids  # noqa: E402
+import cli_client as skill_cli_client  # noqa: E402
 
 
 def test_skill_does_not_contain_platform_browser_automation_code() -> None:
@@ -95,3 +96,17 @@ def test_build_import_workbooks_writes_text_cells(tmp_path: Path) -> None:
     assert [cell.value for cell in ws[1]] == IMPORT_HEADERS
     assert ws["A2"].value == "1052534376394"
     assert ws["A2"].number_format == "@"
+
+
+def test_skill_real_platform_call_uses_shared_interactive_recovery(monkeypatch) -> None:
+    observed: dict[str, object] = {}
+
+    def fake_run_ops_json(args, **kwargs):
+        observed["args"] = args
+        observed["kwargs"] = kwargs
+        return {"success": True, "data": {"rows": []}}
+
+    monkeypatch.setattr(skill_cli_client, "run_ops_json", fake_run_ops_json)
+
+    assert skill_cli_client.query_tmcs_stock(item_ids=["1001"], warehouse_code="WH") == []
+    assert observed["kwargs"] == {"interactive_recovery": True}

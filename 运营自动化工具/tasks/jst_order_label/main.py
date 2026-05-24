@@ -46,7 +46,7 @@ def main() -> int:
     if not args.dry_run:
         command.append("--execute")
 
-    payload = run_ops_json(command)
+    payload = run_ops_json(command, interactive_recovery=not args.dry_run)
     data = payload.get("data") if isinstance(payload, dict) else {}
     result = {
         "success": bool(payload.get("success")),
