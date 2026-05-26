@@ -114,7 +114,7 @@ def learn_jst_browser_scene(*, scene: str, timeout: int = 90, cdp_url: str | Non
             "profile_path": str(path),
             "page_url": profile["page_url"],
             "page_title": profile["page_title"],
-            "next_command": "ops jst shop-goods import --file /path/to/import.xlsx --shop-name '（猫超）启明工贸有限公司' --mode cover --output json",
+            "next_command": "ops jst shop-goods import --file /path/to/import.xlsx --shop-name '（猫超）福安市启明工贸有限公司（肖国清）' --mode cover --output json",
         },
     )
 

@@ -26,7 +26,7 @@ ops --json jst browser learn --scene shop-goods-import
 ## 只生成 Excel
 
 ```bash
-python skills/tmcs_sync_jst_shop_goods/main.py run \
+python3 run.py 聚水潭商品信息同步猫超 \
   --item-ids 123456,234567 \
   --no-import
 ```
@@ -36,7 +36,7 @@ python skills/tmcs_sync_jst_shop_goods/main.py run \
 兼容字段：`平台商品ID`、`商品ID`、`item_id`、`itemId`、`platform_item_id`。
 
 ```bash
-python skills/tmcs_sync_jst_shop_goods/main.py run \
+python3 run.py 聚水潭商品信息同步猫超 \
   --input-file ./商品ID列表.xlsx \
   --no-import
 ```
@@ -44,7 +44,7 @@ python skills/tmcs_sync_jst_shop_goods/main.py run \
 ## 生成并导入聚水潭
 
 ```bash
-python skills/tmcs_sync_jst_shop_goods/main.py run \
+python3 run.py 聚水潭商品信息同步猫超 \
   --item-ids 123456,234567 \
   --import-jst \
   --import-mode cover
@@ -54,7 +54,7 @@ python skills/tmcs_sync_jst_shop_goods/main.py run \
 
 ```bash
 ops --json tmcs stock query --item-ids 123456,234567 --warehouse-code mc_aokesi_suolong --output json
-ops --json jst shop-goods import --file /path/to/jst_shop_goods_import.xlsx --shop-name "（猫超）启明工贸有限公司" --mode cover --output json
+ops --json jst shop-goods import --file /path/to/jst_shop_goods_import.xlsx --shop-name "（猫超）福安市启明工贸有限公司（肖国清）" --mode cover --output json
 ```
 
 ## 输出

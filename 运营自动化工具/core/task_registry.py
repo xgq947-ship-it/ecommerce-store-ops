@@ -60,6 +60,18 @@ TASKS = {
         "script": ROOT / "tasks" / "tmall_product_list" / "main.py",
         "description": "更新猫超商品列表",
     },
+    "tmcs_sync_jst_shop_goods": {
+        "aliases": [
+            "tmcs_sync_jst_shop_goods",
+            "聚水潭商品信息同步猫超",
+            "猫超商品信息同步聚水潭",
+            "平台商品ID同步聚水潭",
+            "猫超商品同步聚水潭",
+        ],
+        "module": "tasks.tmcs_sync_jst_shop_goods.main",
+        "script": ROOT / "tasks" / "tmcs_sync_jst_shop_goods" / "main.py",
+        "description": "猫超平台商品信息同步聚水潭店铺商品资料",
+    },
     "retry_queue": {
         "aliases": ["retry_queue", "查看失败任务", "查看重试队列", "重试失败任务", "重放失败任务"],
         "module": "tasks.retry_queue",
@@ -81,6 +93,7 @@ FUZZY_TASK_RULES = [
     ("jst_brush_reimburse_workorder", (("聚水潭", "刷单", "报销", "工单"), ("刷单", "报销", "登记"), ("特殊单", "报销", "打款"))),
     ("process_maochao_bills", (("猫超", "账单"), ("猫超", "对账"), ("月账单",), ("HDB",))),
     ("update_maochao_goods", (("猫超", "商品列表"), ("猫超", "商品", "更新"))),
+    ("tmcs_sync_jst_shop_goods", (("聚水潭", "商品信息", "同步", "猫超"), ("猫超", "商品", "同步", "聚水潭"), ("平台商品ID", "同步", "聚水潭"))),
     ("update_jst_products", (("聚水潭", "商品资料"), ("聚水潭", "资料"), ("JST", "商品"))),
     ("company_nas_index", (("公司网盘", "索引"), ("NAS", "索引"), ("公司网盘", "目录", "扫描"), ("公司网盘", "文件", "搜索"), ("搜索", "公司网盘", "文件"))),
     ("company_nas_listing", (("公司网盘",), ("NAS", "产品"), ("网盘", "下载"), ("产品资料", "上架"))),

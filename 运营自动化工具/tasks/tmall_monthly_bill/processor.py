@@ -70,6 +70,10 @@ def to_excel_number(value: Decimal | None) -> object:
     return float(value)
 
 
+def round_currency(value: Decimal) -> Decimal:
+    return value.quantize(Decimal("0.01"))
+
+
 def backend_code_sort_key(value: object) -> tuple[int, str]:
     code = norm(value)
     return (1, "") if code is None else (0, code)
@@ -240,6 +244,7 @@ def choose_first_non_empty(values: list[object]) -> object:
 def allocate_amount_by_ratio(amount: Decimal, weights: list[Decimal]) -> list[Decimal]:
     if not weights:
         return []
+    amount = round_currency(amount)
     total_weight = sum(weights, Decimal("0"))
     if total_weight == Decimal("0"):
         allocations = [Decimal("0")] * len(weights)
@@ -253,7 +258,7 @@ def allocate_amount_by_ratio(amount: Decimal, weights: list[Decimal]) -> list[De
         if index == len(weights) - 1:
             share = amount - allocated_sum
         else:
-            share = (amount * weight / total_weight).quantize(Decimal("0.01"))
+            share = round_currency(amount * weight / total_weight)
             allocated_sum += share
         allocations.append(share)
     return allocations
@@ -355,6 +360,7 @@ def build_invoice_sheet(
             "商品数量": qty,
             "含税单价": group["含税单价"],
             "账单金额": bill_amount,
+            "原始账单金额": bill_amount,
         }
         if product_code:
             product_group_rows.setdefault(product_code, []).append(row_data)
@@ -362,12 +368,17 @@ def build_invoice_sheet(
             product_group_rows.setdefault(f"__missing__:{group['后端商品编码']}:{len(group_order)}", []).append(row_data)
         group_order.append(group_key)
 
+    bill_allocations: dict[int, Decimal] = {}
     ticket_allocations: dict[int, Decimal] = {}
     for rows in product_group_rows.values():
-        weights = [(row["账单金额"] if row["账单金额"] is not None else Decimal("0")) for row in rows]
+        weights = [(row["原始账单金额"] if row["原始账单金额"] is not None else Decimal("0")) for row in rows]
+        bill_total = sum(weights, Decimal("0"))
         product_code = norm(rows[0]["商品编码"])
         ticket_total = ticket_by_product_code.get(product_code, Decimal("0")) if product_code else Decimal("0")
+        allocated_bills = allocate_amount_by_ratio(bill_total, weights)
         allocated = allocate_amount_by_ratio(ticket_total, weights)
+        for index, amount in enumerate(allocated_bills):
+            bill_allocations[id(rows[index])] = amount
         for index, amount in enumerate(allocated):
             ticket_allocations[id(rows[index])] = amount
 
@@ -389,6 +400,7 @@ def build_invoice_sheet(
                     break
             if row_data is not None:
                 break
+        bill_amount = bill_allocations.get(id(row_data), round_currency(bill_amount)) if row_data is not None else round_currency(bill_amount)
         ticket_amount = ticket_allocations.get(id(row_data), Decimal("0")) if row_data is not None else Decimal("0")
         if qty == Decimal("0") and ticket_amount == Decimal("0"):
             continue

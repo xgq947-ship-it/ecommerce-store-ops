@@ -7,6 +7,7 @@ from pathlib import Path
 from openpyxl import Workbook
 
 from tasks.tmall_monthly_bill import main as tmall_main
+from tasks.tmall_monthly_bill import processor as tmall_processor
 from tasks.tmall_monthly_bill.services.profit_summary_service import _centered_summary_start_row, render_profit_summary
 from tasks.tmall_monthly_bill.services.promotion_service import write_promotion_sheet
 from tasks.tmall_monthly_bill.services.reconciliation_service import write_reconciliation_sheet
@@ -80,6 +81,32 @@ def test_writes_promotion_sheet_from_csv_without_changing_column_order(tmp_path:
         ("收支类型", "金额", "备注"),
         ("支出", 12.5, "投放A"),
     ]
+
+
+def test_build_invoice_sheet_rounds_bill_and_ticket_amounts_to_cents() -> None:
+    cargo_header = ["后端商品编码", "商品编码", "品名", "商品数量", "含税单价"]
+    cargo_rows = [
+        ["B1", "P1", "商品1", 1, "10.005"],
+        ["B2", "P1", "商品1", 1, "20.005"],
+    ]
+    ticket_header = ["后端商品编码", "商品编码", "含税金额"]
+    ticket_rows = [
+        ["B1", "P1", "0.004"],
+        ["B2", "P1", "0.006"],
+    ]
+
+    invoice_header, invoice_rows, _ = tmall_processor.build_invoice_sheet(cargo_header, cargo_rows, ticket_header, ticket_rows)
+    bill_idx = invoice_header.index("账单金额")
+    ticket_idx = invoice_header.index("票扣")
+    invoice_idx = invoice_header.index("开票金额")
+
+    bill_amounts = [Decimal(str(row[bill_idx])) for row in invoice_rows]
+    ticket_amounts = [Decimal(str(row[ticket_idx])) for row in invoice_rows]
+    invoice_amounts = [Decimal(str(row[invoice_idx])) for row in invoice_rows]
+
+    assert bill_amounts == [Decimal("10"), Decimal("20.01")]
+    assert ticket_amounts == [Decimal("0"), Decimal("0.01")]
+    assert invoice_amounts == [Decimal("10"), Decimal("20.02")]
 
 
 def test_renders_profit_summary_in_invoice_sheet_right_side() -> None:

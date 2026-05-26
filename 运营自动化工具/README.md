@@ -40,6 +40,7 @@
 - `process_maochao_bills`
 - `update_jst_products`
 - `update_maochao_goods`
+- `tmcs_sync_jst_shop_goods`
 - `retry_queue`
 
 ## 任务与 Ops-Cli 的对应关系
@@ -58,6 +59,7 @@
 python3 run.py --list
 python3 run.py 更新聚水潭资料 --dry-run --use-local-only
 python3 run.py 更新猫超商品列表 --dry-run --skip-auto-download
+python3 run.py 聚水潭商品信息同步猫超 --item-ids 1052305450766 --import-jst --import-mode cover
 python3 run.py 刷单订单插黄旗 --dry-run --limit 1
 python3 run.py buyer_show --buyer-show-path "/绝对路径/买家秀" --model "AQA-12D-838" --dry-run
 python3 run.py buyer_show --buyer-show-path "/绝对路径/买家秀" --model "AQA-12D-838" --reset-rotation

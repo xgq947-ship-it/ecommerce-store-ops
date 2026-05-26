@@ -304,6 +304,10 @@ def tmcs_request(
             parsed = response.json()
         except Exception:
             parsed = None
+        if parsed is None:
+            text = content[:4096].decode("utf-8", errors="ignore")
+            if "<title>登录" in text or "登录</title>" in text:
+                raise RuntimeError("猫超登录态失效：接口返回登录页面。")
         return response.status_code, parsed, content
 
 

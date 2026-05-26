@@ -1,10 +1,10 @@
 name: tmcs_sync_jst_shop_goods
 description: 将猫超一盘货库存商品信息同步生成聚水潭店铺商品资料导入表，并委托 Ops-Cli 通过 9222 专用浏览器执行导入与交互登录恢复。
-entrypoint: python skills/tmcs_sync_jst_shop_goods/main.py
+entrypoint: python3 run.py 聚水潭商品信息同步猫超
 commands:
   learn: python skills/tmcs_sync_jst_shop_goods/main.py learn
-  run_no_import: python skills/tmcs_sync_jst_shop_goods/main.py run --item-ids 123456,234567 --no-import
-  run_import: python skills/tmcs_sync_jst_shop_goods/main.py run --item-ids 123456,234567 --import-jst
+  run_no_import: python3 run.py 聚水潭商品信息同步猫超 --item-ids 123456,234567 --no-import
+  run_import: python3 run.py 聚水潭商品信息同步猫超 --item-ids 123456,234567 --import-jst --import-mode cover
 inputs:
   - item_ids
   - input_file

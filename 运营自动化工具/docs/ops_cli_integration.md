@@ -16,6 +16,7 @@ ops --json ...
 
 - `update_jst_products` -> `ops --json jst product sync`
 - `update_maochao_goods` -> `ops --json tmcs product sync`
+- `tmcs_sync_jst_shop_goods` -> `ops --json tmcs stock query` + `ops --json jst shop-goods import`
 - `tag_jst_brush_orders` -> `ops --json jst order label`
 - `jst_brush_reimburse_workorder` -> `ops --json jst order reimburse`
 - `tmall_monthly_bill/downloader.py` -> `ops --json tmcs bill download`

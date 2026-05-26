@@ -4,13 +4,17 @@ import re
 from decimal import Decimal
 from typing import Any
 
+from ops_cli.capabilities import mark_scene_refreshed
+from ops_cli.capabilities import require_interactive_recovery
 from ops_cli.platforms.tmcs.inventory import DEFAULT_WAREHOUSE_CODE
 from ops_cli.platforms.tmcs.inventory import _flatten_row
-from ops_cli.platforms.tmcs.inventory import _load_adjust_template
 from ops_cli.platforms.tmcs.inventory import _search_inventory_rows
+from ops_cli.platforms.tmcs.inventory import learn_inventory_adjust
 from ops_cli.platforms.tmcs.shared import TMCS_INVENTORY_SEARCH_SCENE
 from ops_cli.platforms.tmcs.shared import TMCS_SITE
 from ops_cli.platforms.tmcs.shared import check_scene_or_fail
+from ops_cli.platforms.tmcs.shared import is_probable_auth_error
+from ops_cli.platforms.tmcs.shared import load_scene_or_fail
 
 
 FIELD_CANDIDATES = {
@@ -88,7 +92,13 @@ def normalize_item_ids(item_ids: str | list[str] | tuple[str, ...]) -> list[str]
 
 
 def _load_stock_template() -> dict[str, Any]:
-    return _load_adjust_template()
+    return {
+        "inventory_search": load_scene_or_fail(
+            TMCS_SITE,
+            TMCS_INVENTORY_SEARCH_SCENE,
+            next_command="ops tmcs inventory adjust-learn",
+        )
+    }
 
 
 def _key_token(value: str) -> str:
@@ -132,16 +142,26 @@ def query_stock(*, item_ids: str | list[str], warehouse_code: str = DEFAULT_WARE
     if not normalized_item_ids:
         raise RuntimeError("请传入至少一个平台商品ID。")
 
-    template = _load_stock_template()
-    search_scene = template.get("inventory_search") or {}
-    check_scene_or_fail(TMCS_SITE, TMCS_INVENTORY_SEARCH_SCENE, next_command="ops tmcs inventory adjust-learn")
+    retried_for_auth = False
+    while True:
+        template = _load_stock_template()
+        search_scene = template.get("inventory_search") or {}
+        check_scene_or_fail(TMCS_SITE, TMCS_INVENTORY_SEARCH_SCENE, next_command="ops tmcs inventory adjust-learn")
 
-    rows: list[dict[str, str]] = []
-    for item_id in normalized_item_ids:
-        found_rows = _search_inventory_rows(search_scene=search_scene, warehouse_code=warehouse_code, item_id=item_id)
-        for raw_row in found_rows:
-            standardized = standardize_stock_row(raw_row)
-            if not standardized["platform_item_id"]:
-                standardized["platform_item_id"] = item_id
-            rows.append(standardized)
-    return rows
+        try:
+            rows: list[dict[str, str]] = []
+            for item_id in normalized_item_ids:
+                found_rows = _search_inventory_rows(search_scene=search_scene, warehouse_code=warehouse_code, item_id=item_id)
+                for raw_row in found_rows:
+                    standardized = standardize_stock_row(raw_row)
+                    if not standardized["platform_item_id"]:
+                        standardized["platform_item_id"] = item_id
+                    rows.append(standardized)
+            return rows
+        except RuntimeError as exc:
+            if retried_for_auth or not is_probable_auth_error(exc):
+                raise
+            require_interactive_recovery(TMCS_INVENTORY_SEARCH_SCENE)
+            learn_inventory_adjust(force=True)
+            mark_scene_refreshed(TMCS_INVENTORY_SEARCH_SCENE)
+            retried_for_auth = True

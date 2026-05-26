@@ -14,7 +14,7 @@ LOG_DIR = SKILL_DIR / "logs"
 SCREENSHOT_DIR = SKILL_DIR / "screenshots"
 
 DEFAULT_WAREHOUSE_CODE = "mc_aokesi_suolong"
-DEFAULT_JST_SHOP_NAME = "（猫超）启明工贸有限公司"
+DEFAULT_JST_SHOP_NAME = "（猫超）福安市启明工贸有限公司（肖国清）"
 
 
 def ensure_dirs() -> None:

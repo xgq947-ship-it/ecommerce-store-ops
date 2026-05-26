@@ -29,6 +29,7 @@ TASK_REQUIRED_MODULES = {
     "buyer_show": ("openpyxl", "PIL"),
     "update_jst_products": (),
     "update_maochao_goods": ("openpyxl",),
+    "tmcs_sync_jst_shop_goods": ("openpyxl",),
     "process_maochao_bills": ("openpyxl",),
 }
 

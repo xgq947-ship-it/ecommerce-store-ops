@@ -59,6 +59,7 @@ python browser_test.py ...
 
 - `更新聚水潭资料` -> `ops --json jst product sync`
 - `更新猫超商品列表` -> `ops --json tmcs product sync`
+- `聚水潭商品信息同步猫超` -> `ops --json tmcs stock query` + `ops --json jst shop-goods import`
 - `刷单订单插黄旗` -> `ops --json jst order label`
 - `刷单报销登记` -> `ops --json jst order reimburse`
 - `猫超账单下载阶段` -> `ops --json tmcs bill download`
@@ -73,6 +74,8 @@ python browser_test.py ...
 - `刷单订单插黄旗`
 - `更新聚水潭资料`
 - `更新猫超商品列表`
+- `聚水潭商品信息同步猫超`
+- `猫超商品信息同步聚水潭`
 - `猫超账单整理`
 - `买家秀打包`
 - `更新公司网盘索引`

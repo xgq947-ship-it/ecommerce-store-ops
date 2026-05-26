@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import subprocess
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
@@ -12,6 +13,11 @@ sys.path.insert(0, str(SKILL_DIR))
 from excel_builder import IMPORT_HEADERS, build_import_workbooks, build_rows  # noqa: E402
 from input_loader import load_item_ids_from_excel, parse_item_ids  # noqa: E402
 import cli_client as skill_cli_client  # noqa: E402
+
+PROJECT_ROOT = SKILL_DIR.parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from core.task_registry import resolve_task, task_scripts  # noqa: E402
 
 
 def test_skill_does_not_contain_platform_browser_automation_code() -> None:
@@ -110,3 +116,32 @@ def test_skill_real_platform_call_uses_shared_interactive_recovery(monkeypatch) 
 
     assert skill_cli_client.query_tmcs_stock(item_ids=["1001"], warehouse_code="WH") == []
     assert observed["kwargs"] == {"interactive_recovery": True}
+
+
+def test_formal_task_entry_resolves_chinese_triggers() -> None:
+    assert resolve_task("聚水潭商品信息同步猫超") == "tmcs_sync_jst_shop_goods"
+    assert resolve_task("猫超商品信息同步聚水潭") == "tmcs_sync_jst_shop_goods"
+    assert resolve_task("平台商品ID同步聚水潭") == "tmcs_sync_jst_shop_goods"
+    assert task_scripts()["tmcs_sync_jst_shop_goods"] == PROJECT_ROOT / "tasks" / "tmcs_sync_jst_shop_goods" / "main.py"
+
+
+def test_formal_skill_uses_run_py_entry_and_trigger_document() -> None:
+    skill_doc = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+    metadata = (SKILL_DIR / "skill.yaml").read_text(encoding="utf-8")
+
+    assert "聚水潭商品信息同步猫超" in skill_doc
+    assert "1052305450766 聚水潭商品信息同步猫超" in skill_doc
+    assert "python3 run.py 聚水潭商品信息同步猫超" in metadata
+
+
+def test_formal_task_entry_defaults_to_run_subcommand() -> None:
+    result = subprocess.run(
+        [sys.executable, str(task_scripts()["tmcs_sync_jst_shop_goods"]), "--help"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "--item-ids" in result.stdout
+    assert "--import-jst" in result.stdout
