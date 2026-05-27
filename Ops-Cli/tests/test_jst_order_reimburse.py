@@ -23,6 +23,8 @@ def test_build_reimburse_payload_defaults() -> None:
     assert {"fieldId": "NUMBERField1023127320230729214743", "value": 965.0} in data["businessField"]
     assert {"fieldId": "amountField", "value": 140.0} in data["businessField"]
     assert {"fieldId": "FILE_UPLOADField1023127320230728164848", "value": ["https://oss.example.com/reimburse.xlsx"]} in data["businessField"]
+    assert {"fieldId": "alipayAccountField", "value": "15659384388"} in data["businessField"]
+    assert {"fieldId": "alipayNameField", "value": "Evan"} in data["businessField"]
 
 
 def test_run_reimburse_dry_run_checks_existing_without_upload(monkeypatch, tmp_path: Path) -> None:

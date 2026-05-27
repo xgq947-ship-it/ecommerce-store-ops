@@ -39,6 +39,8 @@ WORKORDER_REFERER = "https://shouhou.erp321.com/"
 DEFAULT_EXECUTOR_IDS = [17083890]
 DEFAULT_COPY_SENDER_IDS = [13848164]
 DEFAULT_GRADE = "NORMAL"
+DEFAULT_ALIPAY_ACCOUNT = "15659384388"
+DEFAULT_ALIPAY_NAME = "Evan"
 SELECT_CREATED_URL = "https://api.erp321.com/jgd/api/gd/workOrder/selectCreatedWoByField"
 STS_TOKEN_URL = "https://api.erp321.com/jgd/api/gd/aliyun/oss/getStsToken"
 BATCH_INSERT_URL = "https://api.erp321.com/jgd/api/gd/workOrder/batchInsert"
@@ -248,8 +250,8 @@ def build_reimburse_workorder_payload(
             "grade": DEFAULT_GRADE,
             "partnerOrderStatus": None,
             "businessField": [
-                {"fieldId": "alipayAccountField"},
-                {"fieldId": "alipayNameField"},
+                {"fieldId": "alipayAccountField", "value": DEFAULT_ALIPAY_ACCOUNT},
+                {"fieldId": "alipayNameField", "value": DEFAULT_ALIPAY_NAME},
                 {"fieldId": "orderField", "value": online_order_id},
                 {"fieldId": FIELD_BANK_INFO, "value": BANK_INFO},
                 {"fieldId": FIELD_PRINCIPAL, "value": float(principal_total)},
