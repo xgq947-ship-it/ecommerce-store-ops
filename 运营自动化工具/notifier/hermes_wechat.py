@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-import sys
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +31,7 @@ class HermesWeChatNotifier:
         timeout: int = 10,
         agent_root: Path | None = None,
         env_path: Path | None = None,
+        python_bin: Path | None = None,
     ) -> None:
         self.enabled = enabled
         self.base_url = base_url
@@ -39,6 +40,9 @@ class HermesWeChatNotifier:
         self.timeout = timeout
         self.agent_root = agent_root or Path(os.getenv("HERMES_AGENT_ROOT", Path.home() / ".hermes" / "hermes-agent"))
         self.env_path = env_path or Path(os.getenv("HERMES_ENV_PATH", Path.home() / ".hermes" / ".env"))
+        configured_python = os.getenv("HERMES_PYTHON_BIN", "").strip()
+        self.python_bin = python_bin or (Path(configured_python) if configured_python else self.agent_root / "venv" / "bin" / "python3")
+        self.ops_scripts_dir = Path(__file__).resolve().parents[2] / "Ops-Cli" / "scripts"
 
     @classmethod
     def from_config(cls, config: dict[str, Any], *, force_enabled: bool = False) -> "HermesWeChatNotifier":
@@ -64,10 +68,31 @@ class HermesWeChatNotifier:
             _load_env(self.env_path)
             if not self.agent_root.exists():
                 raise RuntimeError(f"Hermes agent 目录不存在：{self.agent_root}")
-            sys.path.insert(0, str(self.agent_root))
-            from tools.send_message_tool import send_message_tool
-
-            raw = send_message_tool({"target": "weixin", "message": message})
+            if not self.python_bin.exists():
+                raise RuntimeError(f"Hermes Python 不存在：{self.python_bin}")
+            if not self.ops_scripts_dir.exists():
+                raise RuntimeError(f"Ops-Cli Hermes 发送脚本目录不存在：{self.ops_scripts_dir}")
+            script = (
+                "import json, sys\n"
+                "sys.path.insert(0, sys.argv[1])\n"
+                "from send_daily_profit_weixin import HERMES_ENV, _send_weixin_with_retry, load_env\n"
+                "load_env(HERMES_ENV)\n"
+                "message = sys.stdin.read()\n"
+                "print(json.dumps(_send_weixin_with_retry(message), ensure_ascii=False))\n"
+            )
+            completed = subprocess.run(
+                [str(self.python_bin), "-c", script, str(self.ops_scripts_dir)],
+                cwd=str(self.agent_root),
+                env=os.environ.copy(),
+                input=message,
+                text=True,
+                capture_output=True,
+                timeout=max(self.timeout, 45),
+                check=False,
+            )
+            if completed.returncode != 0:
+                raise RuntimeError(completed.stderr.strip() or "Hermes 消息发送命令执行失败")
+            raw = completed.stdout.strip().splitlines()[-1]
             result = json.loads(raw)
             if not result.get("success"):
                 raise RuntimeError(str(result.get("error") or raw))

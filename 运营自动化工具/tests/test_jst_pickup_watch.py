@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+import subprocess
 
 from tasks import jst_pickup_watch
 from notifier.hermes_wechat import HermesWeChatNotifier
@@ -123,3 +124,30 @@ def test_hermes_dry_run_returns_preview_without_sending() -> None:
     assert result["success"] is True
     assert result["dry_run"] is True
     assert "模拟消息" in result["preview"]
+
+
+def test_hermes_real_send_runs_in_agent_python(monkeypatch, tmp_path: Path) -> None:
+    agent_root = tmp_path / "hermes-agent"
+    python_bin = agent_root / "venv" / "bin" / "python3"
+    python_bin.parent.mkdir(parents=True)
+    python_bin.write_text("", encoding="utf-8")
+    called: dict[str, object] = {}
+    notifier = HermesWeChatNotifier(enabled=True, agent_root=agent_root, env_path=tmp_path / ".env")
+    notifier.ops_scripts_dir = tmp_path / "ops-scripts"
+    notifier.ops_scripts_dir.mkdir()
+
+    def fake_run(command, **kwargs):
+        called["command"] = command
+        called["kwargs"] = kwargs
+        return subprocess.CompletedProcess(command, 0, stdout='{"success": true}', stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    result = notifier.send_text("聚水潭订单揽收异常提醒", "正式消息")
+
+    assert result["success"] is True
+    assert result["sent"] is True
+    assert called["command"][0] == str(python_bin)
+    assert called["command"][3] == str(notifier.ops_scripts_dir)
+    assert called["kwargs"]["input"] == "聚水潭订单揽收异常提醒\n正式消息"
+    assert called["kwargs"]["timeout"] == 45

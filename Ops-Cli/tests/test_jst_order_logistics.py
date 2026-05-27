@@ -66,6 +66,24 @@ def test_normalize_trace_events_from_nested_payload() -> None:
     assert events == [{"time": "10:00", "content": "已揽收"}]
 
 
+def test_trace_authorization_challenge_is_not_treated_as_empty_trace() -> None:
+    payload = {
+        "IsSuccess": False,
+        "ReturnValue": {
+            "msg": "为了您的数据安全，查询轨迹要求验证身份，已发送验证码到您手机",
+            "action": "查询轨迹",
+        },
+    }
+    response = "0|" + json.dumps(payload, ensure_ascii=False)
+
+    try:
+        order._parse_acall_response(response)
+    except order.LogisticsTraceAuthorizationRequired as exc:
+        assert "查询轨迹需要完成短信验证" in str(exc)
+    else:
+        raise AssertionError("应将查询轨迹短信验证识别为授权错误")
+
+
 def test_run_order_logistics_from_order_list(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(order, "get_scene_manager", lambda: FakeSceneManager())

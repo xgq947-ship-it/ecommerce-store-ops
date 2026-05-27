@@ -108,10 +108,11 @@ python3 run.py 聚水潭揽收监控 --notify
 export HERMES_WECHAT_ENABLED=true
 export HERMES_AGENT_ROOT="$HOME/.hermes/hermes-agent"   # 非默认安装位置时设置
 export HERMES_ENV_PATH="$HOME/.hermes/.env"             # 非默认环境文件时设置
+export HERMES_PYTHON_BIN="$HOME/.hermes/hermes-agent/venv/bin/python3"  # 非默认 Hermes Python 时设置
 python3 run.py 聚水潭揽收监控 --notify
 ```
 
-`HERMES_WECHAT_BASE_URL`、`HERMES_WECHAT_TOKEN`、`HERMES_WECHAT_RECEIVER` 预留给后续 HTTP 网关适配器；当前已验证的本机 Weixin adapter 使用 Hermes 自身环境和默认会话，不依赖企业微信 URL/token。发送失败只记录到任务日志，不中断报表生成。
+`HERMES_WECHAT_BASE_URL`、`HERMES_WECHAT_TOKEN`、`HERMES_WECHAT_RECEIVER` 预留给后续 HTTP 网关适配器；当前已验证的本机 Weixin adapter 使用 Hermes 自身环境和默认会话，不依赖企业微信 URL/token。发送时复用现有 Hermes 上下文恢复与重试能力，因此恢复发送超时下限为 45 秒。发送失败只记录到任务日志，不中断报表生成。
 
 ### 双击运行
 
@@ -153,7 +154,7 @@ tail -f logs/jst_pickup_watch.err.log
 0 18 * * * cd /你的项目路径/运营自动化工具 && /usr/bin/python3 run.py 聚水潭揽收监控 --notify
 ```
 
-真实聚水潭执行当前仍需补齐 `Ops-Cli` 中的付款订单分页查询和物流轨迹字段映射；`--dry-run` 全流程不受影响。
+真实聚水潭执行通过 `Ops-Cli` 复用现有 `jst order logistics` 查询链路：有快递单号时读取轨迹识别揽收节点，没有快递单号时直接进入未揽收风险判断，并按 `JST_ORDER_STATS_STORE` 筛选店铺。若聚水潭要求“查询轨迹”短信授权，先在聚水潭页面完成授权后重新执行；任务不会把授权失败误判为未揽收。当前待增强字段仅为猫超真实付款时间 `maochao_real_pay_time`。
 
 ## 买家秀说明
 

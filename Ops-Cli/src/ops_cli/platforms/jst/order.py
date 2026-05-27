@@ -88,6 +88,10 @@ LOGISTICS_STATUS_KEYS = (
 )
 SIGNED_KEYWORDS = ("已签收", "签收", "妥投", "已妥投", "delivered", "signed")
 
+
+class LogisticsTraceAuthorizationRequired(RuntimeError):
+    """Raised when JST requires an SMS check before returning logistics traces."""
+
 ORDER_INPUT_HEADER_CANDIDATES = {
     "order",
     "order_id",
@@ -512,6 +516,11 @@ def _parse_acall_response(text: str) -> Any:
         payload_text = text[separator_index + 1 + offset :]
         payload = json.loads(payload_text)
         if isinstance(payload, dict) and payload.get("IsSuccess") is False:
+            returned = payload.get("ReturnValue")
+            if isinstance(returned, dict) and returned.get("action") == "查询轨迹":
+                raise LogisticsTraceAuthorizationRequired(
+                    "查询轨迹需要完成短信验证。请先在聚水潭物流查询页面完成授权后重新执行。"
+                )
             raise RuntimeError(str(payload.get("ExceptionMessage") or payload))
         return payload.get("ReturnValue") if isinstance(payload, dict) else payload
     return _extract_json_payload(text)
@@ -563,6 +572,51 @@ def _request_trace_from_panel(
     response = client.post(f"{panel_url}&am___=LoadTrace", headers=headers, data=form)
     response.raise_for_status()
     return _normalize_trace_events(_parse_acall_response(response.text))
+
+
+def resolve_logistics_from_row(
+    client: httpx.Client,
+    session: dict[str, Any],
+    row: dict[str, Any],
+) -> dict[str, Any]:
+    """Apply the shared order-logistics trace lookup to an already-fetched row."""
+    logistics_no = _first_text(row, LOGISTICS_NUMBER_KEYS)
+    company = _first_text(row, LOGISTICS_COMPANY_KEYS)
+    status_text = _first_text(row, LOGISTICS_STATUS_KEYS)
+    trace_events: list[dict[str, Any]] = []
+    template = _load_logistics_template()
+    trace_source = "order_list"
+    if logistics_no:
+        try:
+            trace_events = _request_trace_from_panel(client, session, logistics_no, company)
+            if trace_events:
+                trace_source = "look_express_panel"
+        except LogisticsTraceAuthorizationRequired:
+            raise
+        except Exception:
+            trace_source = "look_express_panel_failed"
+    if not trace_events and template and logistics_no:
+        try:
+            trace_events = _request_trace_from_template(client, template, logistics_no, row)
+            if trace_events:
+                trace_source = JST_ORDER_LOGISTICS_SCENE
+        except LogisticsTraceAuthorizationRequired:
+            raise
+        except Exception:
+            trace_source = "order_list_template_failed"
+    if not status_text and trace_events:
+        first_event = trace_events[0]
+        status_text = str(first_event.get("StatusSrc") or first_event.get("status") or "").strip()
+    return {
+        "logistics_no": logistics_no,
+        "logistics_company": company,
+        "logistics_status": status_text,
+        "signed": _guess_signed(status_text, trace_events),
+        "trace_source": trace_source,
+        "trace_events": trace_events,
+        "logistics_scene": JST_ORDER_LOGISTICS_SCENE if template else None,
+        "next_learn_command": None if template else "ops --json jst order logistics learn --outer-order-id <订单号>",
+    }
 
 
 def _build_logistics_template(*, captured: dict[str, Any]) -> Path:
@@ -834,31 +888,7 @@ def _run_single_order_logistics(
         raise RuntimeError(f"聚水潭返回 {len(rows)} 条订单，请换更精确的订单号")
 
     row = rows[0]
-    logistics_no = _first_text(row, LOGISTICS_NUMBER_KEYS)
-    company = _first_text(row, LOGISTICS_COMPANY_KEYS)
-    status_text = _first_text(row, LOGISTICS_STATUS_KEYS)
-    trace_events: list[dict[str, Any]] = []
-    template = _load_logistics_template()
-    trace_source = "order_list"
-    if logistics_no:
-        try:
-            trace_events = _request_trace_from_panel(client, session, logistics_no, company)
-            if trace_events:
-                trace_source = "look_express_panel"
-        except Exception:
-            trace_source = "look_express_panel_failed"
-    if not trace_events and template and logistics_no:
-        try:
-            trace_events = _request_trace_from_template(client, template, logistics_no, row)
-            if trace_events:
-                trace_source = JST_ORDER_LOGISTICS_SCENE
-        except Exception:
-            trace_source = "order_list_template_failed"
-    if not status_text and trace_events:
-        first_event = trace_events[0]
-        status_text = str(first_event.get("StatusSrc") or first_event.get("status") or "").strip()
-
-    signed = _guess_signed(status_text, trace_events)
+    logistics = resolve_logistics_from_row(client, session, row)
     return {
         "order_id": order_id,
         "outer_order_id": outer_order_id,
@@ -868,10 +898,10 @@ def _run_single_order_logistics(
         "so_id": str(row.get("so_id") or ""),
         "raw_so_id": str(row.get("raw_so_id") or ""),
         "pre_so_id": str(row.get("pre_so_id") or ""),
-        "logistics_no": logistics_no,
-        "logistics_company": company,
-        "logistics_status": status_text,
-        "signed": signed,
+        "logistics_no": logistics["logistics_no"],
+        "logistics_company": logistics["logistics_company"],
+        "logistics_status": logistics["logistics_status"],
+        "signed": logistics["signed"],
         "send_date": str(row.get("send_date") or ""),
         "plan_delivery_date": str(row.get("plan_delivery_date") or ""),
         "sign_time": str(row.get("sign_time") or ""),
@@ -880,11 +910,11 @@ def _run_single_order_logistics(
             for key in ("receiver_state", "receiver_city", "receiver_district")
             if str(row.get(key) or "").strip()
         ),
-        "trace_source": trace_source,
-        "trace_events": trace_events,
+        "trace_source": logistics["trace_source"],
+        "trace_events": logistics["trace_events"],
         "scene": JST_ORDER_SCENE,
-        "logistics_scene": JST_ORDER_LOGISTICS_SCENE if template else None,
-        "next_learn_command": None if template else "ops --json jst order logistics learn --outer-order-id <订单号>",
+        "logistics_scene": logistics["logistics_scene"],
+        "next_learn_command": logistics["next_learn_command"],
     }
 
 

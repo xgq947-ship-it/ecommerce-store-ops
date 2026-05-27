@@ -17,7 +17,7 @@
   - 商品资料导出同步
   - 订单打标
   - 订单物流查询
-  - 订单揽收监控数据源（当前 `--dry-run` 闭环可用；真实付款单字段待 scene 学习补齐）
+  - 订单揽收监控数据源（复用订单列表与 `order logistics` 轨迹查询能力）
   - 订单统计 / 利润统计
   - 店铺商品导入
   - 发票工单能力
@@ -210,16 +210,14 @@ ops --json jst auth ensure
 
 ```bash
 ./.venv/bin/ops --json jst order pickup-watch --hours 48 --dry-run
+./.venv/bin/ops --json jst order pickup-watch --hours 48
 ```
 
 `pickup-watch` 只负责获取付款订单与物流轨迹、按 `data/jst/pickup_watch_config.json` 的关键词识别是否已有揽收节点，并输出统一 JSON。付款时间修正、风险阈值、17:30 后订单处理、报表和微信提醒属于 `运营自动化工具`。
 
-当前已提供可离线验收的模拟订单，覆盖已揽收、各风险时长、猫超付款偏移、17:30 后订单、仅有单号无轨迹、轨迹无揽收关键词等情形。真实执行暂不返回伪造数据；需要通过聚水潭页面学习并补齐以下字段映射后接入：
+当前已提供可离线验收的模拟订单，覆盖已揽收、各风险时长、猫超付款偏移、17:30 后订单、仅有单号无轨迹、轨迹无揽收关键词等情形。真实执行复用 `order_list` 分页和现有 `jst order logistics` 查询链路：有快递单号时查询轨迹并识别揽收节点；没有快递单号时直接标记为未揽收。默认按 `JST_ORDER_STATS_STORE` 店铺查询。
 
-- 近 48 小时已付款订单查询过滤条件及分页返回
-- `shop_name`、`platform_order_no`、`jst_order_no`、`platform`、`jst_pay_time`
-- 物流公司、物流单号、物流轨迹明细与最新状态
-- 如后续猫超平台提供真实付款时间，再补 `maochao_real_pay_time`
+聚水潭如要求“查询轨迹”短信授权，命令会中止并提示先完成授权，避免把授权失败误判为未揽收。如后续猫超平台提供真实付款时间，再接入 `maochao_real_pay_time` 替代当前业务层修正逻辑。
 
 ## 目录
 

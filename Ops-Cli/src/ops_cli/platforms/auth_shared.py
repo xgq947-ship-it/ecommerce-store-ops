@@ -12,6 +12,9 @@ AUTH_RECOVERY_MARKERS = (
     "session",
     "cookie",
     "token",
+    "验证码",
+    "验证身份",
+    "短信验证",
 )
 
 
