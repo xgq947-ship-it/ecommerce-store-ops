@@ -85,35 +85,29 @@ def test_after_1730_effective_pay_time_is_not_alerted_on_same_evening() -> None:
     assert evaluated["risk_level"] == "正常"
 
 
-def test_write_reports_outputs_csv_and_xlsx(tmp_path: Path) -> None:
+def test_notification_only_lists_abnormal_platform_order_numbers() -> None:
     rows = [
         {
-            "shop_name": "店铺A",
-            "platform": "猫超",
-            "platform_order_no": "P001",
-            "jst_order_no": "J001",
-            "jst_pay_time": "2026-05-26T20:00:00+08:00",
-            "maochao_real_pay_time": "",
-            "effective_pay_time": "2026-05-26T19:30:00+08:00",
-            "pay_time_source": "jst_pay_time_adjusted",
-            "pay_time_offset_minutes": 30,
-            "check_time": "2026-05-27T18:00:00+08:00",
-            "risk_hours": 22.5,
-            "logistics_company": "顺丰",
-            "logistics_no": "SF1",
-            "latest_logistics_status": "",
-            "has_pickup_record": False,
-            "pickup_matched_keyword": "",
+            "platform_order_no": "P-TIMEOUT",
+            "risk_level": "已超时",
+        },
+        {
+            "platform_order_no": "P-HIGH",
             "risk_level": "高危提醒",
-            "after_1730_order": True,
-            "handling_advice": "立即确认。",
-        }
+        },
+        {
+            "platform_order_no": "P-REMIND",
+            "risk_level": "普通提醒",
+        },
     ]
 
-    artifacts = jst_pickup_watch.write_reports(rows, tmp_path, timestamp="20260527_180000")
+    content = jst_pickup_watch.build_notification_content(
+        counts={"abnormal_orders": 3, "normal_reminder": 1, "high_risk": 1, "timed_out": 1},
+        rows=rows,
+    )
 
-    assert Path(artifacts["csv_path"]).exists()
-    assert Path(artifacts["xlsx_path"]).exists()
+    assert content == "异常订单 3 单\n已超时：P-TIMEOUT\n高危：P-HIGH\n提醒：P-REMIND"
+    assert not hasattr(jst_pickup_watch, "write_reports")
 
 
 def test_hermes_dry_run_returns_preview_without_sending() -> None:

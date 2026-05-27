@@ -73,15 +73,14 @@ python3 run.py 聚水潭揽收监控 --notify
 
 ## 聚水潭订单揽收监控
 
-业务入口读取 `Ops-Cli` 返回的近 48 小时订单 JSON，生成异常订单 CSV/XLSX，并通过 Hermes 微信推送结果。猫超订单统一基于 `effective_pay_time` 计算风险：优先使用猫超真实付款时间，否则使用聚水潭付款时间减去配置偏移；当天 `17:30` 后付款的订单当晚抑制提醒。
+业务入口读取 `Ops-Cli` 返回的近 48 小时订单 JSON，并通过 Hermes 微信发送简短的异常订单号清单。猫超订单统一基于 `effective_pay_time` 计算风险：优先使用猫超真实付款时间，否则使用聚水潭付款时间减去配置偏移；当天 `17:30` 后付款的订单当晚抑制提醒。
 
 ```text
 配置：config/pickup_watch.json
-报告：output/pickup_watch/聚水潭揽收监控_YYYYMMDD_HHMMSS.xlsx
 日志：logs/jst_pickup_watch_YYYYMMDD_HHMMSS.log
 ```
 
-`--dry-run` 不请求真实聚水潭、不发送微信，仍生成报告和日志，并输出模拟推送内容。正式推送复用本机 Hermes Weixin 适配器；必要时可通过 `HERMES_AGENT_ROOT`、`HERMES_ENV_PATH`、`HERMES_PYTHON_BIN` 指向 Hermes 运行环境，不使用企业微信 webhook。
+`--dry-run` 不请求真实聚水潭、不发送微信，仍生成日志并输出模拟推送内容。正式推送只包含异常订单号，不生成异常订单 Excel/CSV。正式推送复用本机 Hermes Weixin 适配器；必要时可通过 `HERMES_AGENT_ROOT`、`HERMES_ENV_PATH`、`HERMES_PYTHON_BIN` 指向 Hermes 运行环境，不使用企业微信 webhook。
 
 定时启动器不存放在本项目，统一由 `/Users/dasheng/Automation` 下的 launchd 启动器管理。
 

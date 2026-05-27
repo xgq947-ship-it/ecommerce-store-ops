@@ -4,15 +4,12 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import logging
 import traceback
 from datetime import datetime, time, timedelta
 from pathlib import Path
 from typing import Any
-
-from openpyxl import Workbook
 
 ROOT = Path(__file__).resolve().parents[1]
 import sys
@@ -23,36 +20,6 @@ if str(ROOT) not in sys.path:
 from clients.ops_cli_client import run_ops_json  # noqa: E402
 from core.config_loader import get_path  # noqa: E402
 from notifier.hermes_wechat import HermesWeChatNotifier  # noqa: E402
-
-
-REPORT_HEADERS = [
-    ("shop_name", "店铺名"),
-    ("platform", "平台来源"),
-    ("platform_order_no", "平台订单号"),
-    ("jst_order_no", "聚水潭订单号"),
-    ("jst_pay_time", "聚水潭付款时间"),
-    ("maochao_real_pay_time", "猫超真实付款时间"),
-    ("effective_pay_time", "修正后付款时间"),
-    ("pay_time_source", "付款时间来源"),
-    ("pay_time_offset_minutes", "付款时间修正分钟数"),
-    ("check_time", "当前检查时间"),
-    ("risk_hours", "距离修正后付款小时数"),
-    ("logistics_company", "快递公司"),
-    ("logistics_no", "物流单号"),
-    ("latest_logistics_status", "当前物流状态"),
-    ("has_pickup_record", "是否已有揽收记录"),
-    ("pickup_matched_keyword", "命中的揽收关键词"),
-    ("risk_level", "风险等级"),
-    ("after_1730_order", "是否 17:30 后付款订单"),
-    ("handling_advice", "处理建议"),
-]
-
-ADVICE = {
-    "普通提醒": "请关注该订单物流揽收情况，避免超过 24 小时未揽收。",
-    "高危提醒": "该订单距离 24 小时揽收风险较近，请优先联系仓库或快递确认。",
-    "已超时": "该订单已超过 24 小时未识别到揽收记录，请立即处理并登记异常原因。",
-    "正常": "",
-}
 
 
 def load_config(path: Path | None = None) -> dict[str, Any]:
@@ -118,7 +85,6 @@ def evaluate_order(order: dict[str, Any], config: dict[str, Any], *, now: dateti
         "risk_level": risk_level,
         "after_1730_order": after_stop,
         "suppressed_until_next_day": suppress,
-        "handling_advice": ADVICE[risk_level],
     }
 
 
@@ -137,47 +103,20 @@ def evaluate_orders(orders: list[dict[str, Any]], config: dict[str, Any], *, now
     return abnormal, counts
 
 
-def write_reports(rows: list[dict[str, Any]], output_dir: Path, *, timestamp: str) -> dict[str, str]:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    csv_path = output_dir / f"聚水潭揽收监控_{timestamp}.csv"
-    xlsx_path = output_dir / f"聚水潭揽收监控_{timestamp}.xlsx"
-    with csv_path.open("w", encoding="utf-8-sig", newline="") as handle:
-        writer = csv.writer(handle)
-        writer.writerow([label for _, label in REPORT_HEADERS])
-        for row in rows:
-            writer.writerow([row.get(key, "") for key, _ in REPORT_HEADERS])
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "揽收异常订单"
-    sheet.append([label for _, label in REPORT_HEADERS])
-    for row in rows:
-        sheet.append([row.get(key, "") for key, _ in REPORT_HEADERS])
-    sheet.freeze_panes = "A2"
-    sheet.auto_filter.ref = sheet.dimensions
-    workbook.save(xlsx_path)
-    return {"csv_path": str(csv_path.resolve()), "xlsx_path": str(xlsx_path.resolve())}
-
-
-def build_notification_content(*, checked_at: str, hours: int, counts: dict[str, int], rows: list[dict[str, Any]], xlsx_path: str) -> str:
-    lines = [
-        f"当前检查时间：{checked_at}",
-        f"检查订单范围：近 {hours} 小时",
-        f"普通提醒订单数量：{counts['normal_reminder']}",
-        f"高危提醒订单数量：{counts['high_risk']}",
-        f"已超时订单数量：{counts['timed_out']}",
-        "",
-        "TOP 10 高风险订单：",
-    ]
-    for item in rows[:10]:
-        lines.append(
-            f"{item.get('shop_name', '')} | {item.get('platform_order_no', '')} | "
-            f"{item['risk_hours']}h | {item['risk_level']} | {item.get('logistics_company', '')} | "
-            f"{item.get('logistics_no', '')} | {item.get('latest_logistics_status', '')}"
-        )
+def build_notification_content(*, counts: dict[str, int], rows: list[dict[str, Any]]) -> str:
     if not rows:
-        lines.append("无异常订单")
-    lines.extend(["", f"异常订单文件：{xlsx_path}"])
-    return "\n".join(lines)[:3500]
+        return "无异常订单"
+    lines = [f"异常订单 {counts['abnormal_orders']} 单"]
+    for level, label in (("已超时", "已超时"), ("高危提醒", "高危"), ("普通提醒", "提醒")):
+        order_numbers = [
+            str(item.get("platform_order_no") or item.get("jst_order_no") or "")
+            for item in rows
+            if item["risk_level"] == level
+        ]
+        order_numbers = [number for number in order_numbers if number]
+        if order_numbers:
+            lines.append(f"{label}：" + "、".join(order_numbers))
+    return "\n".join(lines)
 
 
 def _setup_logger(timestamp: str) -> tuple[logging.Logger, Path]:
@@ -218,27 +157,20 @@ def main() -> int:
         checked_at = str(data.get("checked_at") or datetime.now().astimezone().isoformat(timespec="seconds"))
         check_time = _parse_datetime(checked_at, datetime.now().astimezone())
         abnormal, counts = evaluate_orders(list(data.get("orders") or []), config, now=check_time)
-        output_dir = get_path("pickup_watch_reports_dir")
-        if not output_dir.is_absolute():
-            output_dir = ROOT / output_dir
-        artifacts = write_reports(abnormal, output_dir, timestamp=timestamp)
         content = build_notification_content(
-            checked_at=checked_at,
-            hours=hours,
             counts=counts,
             rows=abnormal,
-            xlsx_path=artifacts["xlsx_path"],
         )
         notifier_config = config.get("notifier", {}).get("hermes_wechat", {})
         notifier = HermesWeChatNotifier.from_config(notifier_config, force_enabled=args.notify)
         should_notify = args.dry_run or args.notify or notifier.enabled
-        notification = notifier.send_text("聚水潭订单揽收异常提醒", content, dry_run=args.dry_run) if should_notify else {
+        notification = notifier.send_text("揽收异常", content, dry_run=args.dry_run) if should_notify else {
             "success": True,
             "sent": False,
             "reason": "Hermes 微信通知未启用",
         }
         logger.info("拉取订单数量=%s 异常订单数量=%s counts=%s", counts["checked_orders"], counts["abnormal_orders"], counts)
-        logger.info("报告文件=%s", artifacts)
+        logger.info("异常订单号=%s", [item.get("platform_order_no") or item.get("jst_order_no") for item in abnormal])
         logger.info("Hermes 微信推送结果=%s", notification)
         result = {
             "success": True,
@@ -247,7 +179,7 @@ def main() -> int:
             "hours": hours,
             "checked_at": checked_at,
             "summary": counts,
-            "reports": artifacts,
+            "abnormal_order_nos": [item.get("platform_order_no") or item.get("jst_order_no") for item in abnormal],
             "task_log_path": str(log_path),
             "notification": notification,
             "ops_result": {key: value for key, value in payload.items() if not key.startswith("_ops_")},
