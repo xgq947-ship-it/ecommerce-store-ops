@@ -16,6 +16,13 @@ def test_has_pickup_record_matches_configured_trace_keyword() -> None:
     assert keyword == "快件已由顺丰收取"
 
 
+def test_actual_trace_status_yi_lan_jian_is_recognized_from_config() -> None:
+    matched, keyword = pickup_watch.detect_pickup_record([{"StatusSrc": "已揽件"}])
+
+    assert matched is True
+    assert keyword == "已揽件"
+
+
 def test_dry_run_produces_orders_for_risk_evaluation() -> None:
     response = pickup_watch.run_pickup_watch(hours=48, dry_run=True)
 

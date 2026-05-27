@@ -24,6 +24,8 @@ tmall_goods_import_file: /Users/dasheng/Downloads/猫超商品列表导出.xlsx
 buyer_show_output_dir: /Users/dasheng/Desktop
 runtime_dir: /Users/dasheng/Desktop/电商Brain/02-运营店铺/运营自动化工具/runtime
 logs_dir: /Users/dasheng/Desktop/电商Brain/02-运营店铺/运营自动化工具/logs
+pickup_watch_config: config/pickup_watch.json
+pickup_watch_reports_dir: output/pickup_watch
 ops_cli_root: /Users/dasheng/Desktop/电商Brain/02-运营店铺/Ops-Cli
 ops_cli_bin: /Users/dasheng/Desktop/电商Brain/02-运营店铺/Ops-Cli/.venv/bin/ops
 company_nas_mount: /Volumes/suolong.synology.me

@@ -1,0 +1,153 @@
+from __future__ import annotations
+
+from datetime import datetime
+from pathlib import Path
+import subprocess
+
+from tasks import jst_pickup_watch
+from notifier.hermes_wechat import HermesWeChatNotifier
+
+
+def config() -> dict:
+    return {
+        "pickup_watch": {
+            "hours": 48,
+            "risk_thresholds": {
+                "normal_reminder_hours": 12,
+                "high_risk_hours": 20,
+                "timeout_hours": 24,
+            },
+            "warehouse": {"stop_shipping_time": "17:30"},
+        },
+        "platform_rules": {
+            "cat_supermarket": {
+                "enabled": True,
+                "pay_time_offset_minutes": 30,
+                "after_1730_orders_next_day": True,
+            }
+        },
+    }
+
+
+def test_maochao_order_uses_adjusted_effective_pay_time() -> None:
+    order = {
+        "platform": "天猫超市",
+        "jst_pay_time": "2026-05-26T22:30:00+08:00",
+        "has_pickup_record": False,
+    }
+
+    evaluated = jst_pickup_watch.evaluate_order(
+        order,
+        config(),
+        now=datetime.fromisoformat("2026-05-27T18:00:00+08:00"),
+    )
+
+    assert evaluated["effective_pay_time"] == "2026-05-26T22:00:00+08:00"
+    assert evaluated["pay_time_source"] == "jst_pay_time_adjusted"
+    assert evaluated["pay_time_offset_minutes"] == 30
+    assert evaluated["risk_level"] == "高危提醒"
+
+
+def test_real_maochao_pay_time_wins_over_adjustment() -> None:
+    order = {
+        "platform": "猫超",
+        "jst_pay_time": "2026-05-26T22:30:00+08:00",
+        "maochao_real_pay_time": "2026-05-26T21:55:00+08:00",
+        "has_pickup_record": False,
+    }
+
+    evaluated = jst_pickup_watch.evaluate_order(
+        order,
+        config(),
+        now=datetime.fromisoformat("2026-05-27T18:00:00+08:00"),
+    )
+
+    assert evaluated["effective_pay_time"] == "2026-05-26T21:55:00+08:00"
+    assert evaluated["pay_time_source"] == "maochao_real_pay_time"
+    assert evaluated["risk_level"] == "高危提醒"
+
+
+def test_after_1730_effective_pay_time_is_not_alerted_on_same_evening() -> None:
+    order = {
+        "platform": "其他平台",
+        "jst_pay_time": "2026-05-27T17:31:00+08:00",
+        "has_pickup_record": False,
+    }
+
+    evaluated = jst_pickup_watch.evaluate_order(
+        order,
+        config(),
+        now=datetime.fromisoformat("2026-05-27T18:00:00+08:00"),
+    )
+
+    assert evaluated["after_1730_order"] is True
+    assert evaluated["suppressed_until_next_day"] is True
+    assert evaluated["risk_level"] == "正常"
+
+
+def test_write_reports_outputs_csv_and_xlsx(tmp_path: Path) -> None:
+    rows = [
+        {
+            "shop_name": "店铺A",
+            "platform": "猫超",
+            "platform_order_no": "P001",
+            "jst_order_no": "J001",
+            "jst_pay_time": "2026-05-26T20:00:00+08:00",
+            "maochao_real_pay_time": "",
+            "effective_pay_time": "2026-05-26T19:30:00+08:00",
+            "pay_time_source": "jst_pay_time_adjusted",
+            "pay_time_offset_minutes": 30,
+            "check_time": "2026-05-27T18:00:00+08:00",
+            "risk_hours": 22.5,
+            "logistics_company": "顺丰",
+            "logistics_no": "SF1",
+            "latest_logistics_status": "",
+            "has_pickup_record": False,
+            "pickup_matched_keyword": "",
+            "risk_level": "高危提醒",
+            "after_1730_order": True,
+            "handling_advice": "立即确认。",
+        }
+    ]
+
+    artifacts = jst_pickup_watch.write_reports(rows, tmp_path, timestamp="20260527_180000")
+
+    assert Path(artifacts["csv_path"]).exists()
+    assert Path(artifacts["xlsx_path"]).exists()
+
+
+def test_hermes_dry_run_returns_preview_without_sending() -> None:
+    notifier = HermesWeChatNotifier(enabled=True)
+
+    result = notifier.send_text("聚水潭订单揽收异常提醒", "模拟消息", dry_run=True)
+
+    assert result["success"] is True
+    assert result["dry_run"] is True
+    assert "模拟消息" in result["preview"]
+
+
+def test_hermes_real_send_runs_in_agent_python(monkeypatch, tmp_path: Path) -> None:
+    agent_root = tmp_path / "hermes-agent"
+    python_bin = agent_root / "venv" / "bin" / "python3"
+    python_bin.parent.mkdir(parents=True)
+    python_bin.write_text("", encoding="utf-8")
+    called: dict[str, object] = {}
+    notifier = HermesWeChatNotifier(enabled=True, agent_root=agent_root, env_path=tmp_path / ".env")
+    notifier.ops_scripts_dir = tmp_path / "ops-scripts"
+    notifier.ops_scripts_dir.mkdir()
+
+    def fake_run(command, **kwargs):
+        called["command"] = command
+        called["kwargs"] = kwargs
+        return subprocess.CompletedProcess(command, 0, stdout='{"success": true}', stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    result = notifier.send_text("聚水潭订单揽收异常提醒", "正式消息")
+
+    assert result["success"] is True
+    assert result["sent"] is True
+    assert called["command"][0] == str(python_bin)
+    assert called["command"][3] == str(notifier.ops_scripts_dir)
+    assert called["kwargs"]["input"] == "聚水潭订单揽收异常提醒\n正式消息"
+    assert called["kwargs"]["timeout"] == 45

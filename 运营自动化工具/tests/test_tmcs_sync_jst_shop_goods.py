@@ -5,7 +5,6 @@ import subprocess
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
-import pytest
 
 
 SKILL_DIR = Path(__file__).resolve().parents[1] / "skills" / "tmcs_sync_jst_shop_goods"
@@ -126,10 +125,9 @@ def test_formal_task_entry_resolves_chinese_triggers() -> None:
     assert task_scripts()["tmcs_sync_jst_shop_goods"] == PROJECT_ROOT / "tasks" / "tmcs_sync_jst_shop_goods" / "main.py"
 
 
-def test_removed_pickup_watch_is_not_a_business_task() -> None:
-    assert "jst_pickup_watch" not in task_scripts()
-    with pytest.raises(SystemExit):
-        resolve_task("聚水潭揽收监控")
+def test_pickup_watch_resolves_as_business_task() -> None:
+    assert resolve_task("聚水潭揽收监控") == "jst_pickup_watch"
+    assert task_scripts()["jst_pickup_watch"] == PROJECT_ROOT / "tasks" / "jst_pickup_watch.py"
 
 
 def test_formal_skill_uses_run_py_entry_and_trigger_document() -> None:
