@@ -42,6 +42,7 @@
 - `update_maochao_goods`
 - `tmcs_sync_jst_shop_goods`
 - `retry_queue`
+- `jst_pickup_watch`
 
 ## 任务与 Ops-Cli 的对应关系
 
@@ -52,6 +53,7 @@
 - `猫超账单下载阶段` -> `ops --json tmcs bill download`
 - `猫超账单整理` -> `ops --json tmcs bill download` + `ops --json tmcs promotion-bill download`
 - `tmcs_sync_jst_shop_goods` skill -> `ops --json tmcs stock query` + `ops --json jst shop-goods import`
+- `聚水潭揽收监控` -> `ops --json jst order pickup-watch`
 
 ## 常用命令
 
@@ -65,7 +67,93 @@ python3 run.py buyer_show --buyer-show-path "/绝对路径/买家秀" --model "A
 python3 run.py buyer_show --buyer-show-path "/绝对路径/买家秀" --model "AQA-12D-838" --reset-rotation
 python3 run.py 查看失败任务
 python3 run.py 更新公司网盘索引 --dry-run
+python3 run.py 聚水潭揽收监控 --dry-run
+python3 run.py 聚水潭揽收监控 --dry-run --notify
 ```
+
+## 聚水潭订单揽收监控
+
+业务入口会读取近 48 小时已付款订单的 Ops-Cli JSON，统一用 `effective_pay_time` 计算风险：猫超订单优先用 `maochao_real_pay_time`，否则将聚水潭付款时间减去配置的 30 分钟；其他订单使用聚水潭付款时间。阈值、揽收关键词、仓库 17:30 停发规则都在配置文件中维护，不写入业务代码。
+
+配置文件：
+
+```text
+config/pickup_watch.json
+```
+
+报告目录和任务日志：
+
+```text
+output/pickup_watch/聚水潭揽收监控_YYYYMMDD_HHMMSS.xlsx
+output/pickup_watch/聚水潭揽收监控_YYYYMMDD_HHMMSS.csv
+logs/jst_pickup_watch_YYYYMMDD_HHMMSS.log
+runtime/context/
+```
+
+手动执行：
+
+```bash
+python3 run.py 聚水潭揽收监控 --dry-run
+python3 run.py 聚水潭揽收监控 --hours 48 --debug
+python3 run.py 聚水潭揽收监控 --notify
+```
+
+`--dry-run` 不请求真实聚水潭、不真实发送微信，仍会生成报告和日志，并在结果 JSON 的 `notification.preview` 输出模拟微信内容。
+
+### Hermes 微信配置
+
+本任务沿用本机已有 Hermes Weixin `send_message_tool` 适配器，发送到 Hermes 已配置的微信会话，不使用企业微信 webhook。正式推送需先启用：
+
+```bash
+export HERMES_WECHAT_ENABLED=true
+export HERMES_AGENT_ROOT="$HOME/.hermes/hermes-agent"   # 非默认安装位置时设置
+export HERMES_ENV_PATH="$HOME/.hermes/.env"             # 非默认环境文件时设置
+python3 run.py 聚水潭揽收监控 --notify
+```
+
+`HERMES_WECHAT_BASE_URL`、`HERMES_WECHAT_TOKEN`、`HERMES_WECHAT_RECEIVER` 预留给后续 HTTP 网关适配器；当前已验证的本机 Weixin adapter 使用 Hermes 自身环境和默认会话，不依赖企业微信 URL/token。发送失败只记录到任务日志，不中断报表生成。
+
+### 双击运行
+
+```bash
+chmod +x 聚水潭揽收监控.command
+```
+
+双击 `聚水潭揽收监控.command` 会在当前项目目录运行 `python3 run.py 聚水潭揽收监控 --notify`，执行完成后保留终端窗口。
+
+### launchd 自动运行
+
+每天固定在 `10:00`、`14:30`、`17:30`、`18:00` 执行，不按半小时轮询。
+
+```bash
+chmod +x install_pickup_watch_launchd.sh uninstall_pickup_watch_launchd.sh
+./install_pickup_watch_launchd.sh
+launchctl list | grep jst-pickup-watch
+launchctl kickstart -k gui/$(id -u)/com.xgq947.jst-pickup-watch
+tail -f logs/jst_pickup_watch.out.log
+tail -f logs/jst_pickup_watch.err.log
+```
+
+卸载：
+
+```bash
+./uninstall_pickup_watch_launchd.sh
+```
+
+安装脚本会把 `launchd/com.xgq947.jst-pickup-watch.plist` 中的 `__PROJECT_DIR__` 替换成当前目录后复制到 `~/Library/LaunchAgents/`。
+
+### crontab 备选
+
+将 `/你的项目路径/运营自动化工具` 替换为本机实际目录：
+
+```cron
+0 10 * * * cd /你的项目路径/运营自动化工具 && /usr/bin/python3 run.py 聚水潭揽收监控 --notify
+30 14 * * * cd /你的项目路径/运营自动化工具 && /usr/bin/python3 run.py 聚水潭揽收监控 --notify
+30 17 * * * cd /你的项目路径/运营自动化工具 && /usr/bin/python3 run.py 聚水潭揽收监控 --notify
+0 18 * * * cd /你的项目路径/运营自动化工具 && /usr/bin/python3 run.py 聚水潭揽收监控 --notify
+```
+
+真实聚水潭执行当前仍需补齐 `Ops-Cli` 中的付款订单分页查询和物流轨迹字段映射；`--dry-run` 全流程不受影响。
 
 ## 买家秀说明
 

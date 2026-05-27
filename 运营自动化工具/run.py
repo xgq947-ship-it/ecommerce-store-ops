@@ -31,6 +31,7 @@ TASK_REQUIRED_MODULES = {
     "update_maochao_goods": ("openpyxl",),
     "tmcs_sync_jst_shop_goods": ("openpyxl",),
     "process_maochao_bills": ("openpyxl",),
+    "jst_pickup_watch": ("openpyxl",),
 }
 
 TASKS = task_scripts()
@@ -164,6 +165,14 @@ def main() -> int:
         for key in ("latest_file", "import_file", "source", "root", "work_dir"):
             if isinstance(parsed_stdout, dict) and parsed_stdout.get(key):
                 context.add_artifact(str(parsed_stdout[key]), kind=key)
+        if isinstance(parsed_stdout, dict):
+            reports = parsed_stdout.get("reports")
+            if isinstance(reports, dict):
+                for key, value in reports.items():
+                    if value:
+                        context.add_artifact(str(value), kind=key)
+            if parsed_stdout.get("task_log_path"):
+                context.add_artifact(str(parsed_stdout["task_log_path"]), kind="task_log")
     if result.returncode != 0:
         context.add_error(
             f"任务退出码：{result.returncode}",

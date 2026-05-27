@@ -72,6 +72,12 @@ TASKS = {
         "script": ROOT / "tasks" / "tmcs_sync_jst_shop_goods" / "main.py",
         "description": "猫超平台商品信息同步聚水潭店铺商品资料",
     },
+    "jst_pickup_watch": {
+        "aliases": ["jst_pickup_watch", "聚水潭揽收监控", "聚水潭订单揽收监控", "订单揽收异常提醒"],
+        "module": "tasks.jst_pickup_watch",
+        "script": ROOT / "tasks" / "jst_pickup_watch.py",
+        "description": "聚水潭付款订单揽收时效风险监控",
+    },
     "retry_queue": {
         "aliases": ["retry_queue", "查看失败任务", "查看重试队列", "重试失败任务", "重放失败任务"],
         "module": "tasks.retry_queue",
@@ -95,6 +101,7 @@ FUZZY_TASK_RULES = [
     ("update_maochao_goods", (("猫超", "商品列表"), ("猫超", "商品", "更新"))),
     ("tmcs_sync_jst_shop_goods", (("聚水潭", "商品信息", "同步", "猫超"), ("猫超", "商品", "同步", "聚水潭"), ("平台商品ID", "同步", "聚水潭"))),
     ("update_jst_products", (("聚水潭", "商品资料"), ("聚水潭", "资料"), ("JST", "商品"))),
+    ("jst_pickup_watch", (("聚水潭", "揽收", "监控"), ("订单", "揽收", "异常"), ("揽收", "提醒"))),
     ("company_nas_index", (("公司网盘", "索引"), ("NAS", "索引"), ("公司网盘", "目录", "扫描"), ("公司网盘", "文件", "搜索"), ("搜索", "公司网盘", "文件"))),
     ("company_nas_listing", (("公司网盘",), ("NAS", "产品"), ("网盘", "下载"), ("产品资料", "上架"))),
     ("retry_queue", (("查看", "失败", "任务"), ("查看", "重试", "队列"), ("重试", "失败", "任务"), ("重放", "失败", "任务"))),

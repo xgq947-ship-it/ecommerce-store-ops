@@ -17,6 +17,7 @@
   - 商品资料导出同步
   - 订单打标
   - 订单物流查询
+  - 订单揽收监控数据源（当前 `--dry-run` 闭环可用；真实付款单字段待 scene 学习补齐）
   - 订单统计 / 利润统计
   - 店铺商品导入
   - 发票工单能力
@@ -102,6 +103,7 @@ ops --json jst order label --input /path/to/latest_brush_orders.json --execute
 ops --json jst order remark --order-id 123456 --remark-text "需要填写的卖家备注" --execute
 ops --json jst order logistics --outer-order-id TB001 --outer-order-id TB002
 ops --json jst order logistics --input /path/to/orders.txt --limit 10
+ops --json jst order pickup-watch --hours 48 --dry-run
 ops --json jst order reimburse --outer-order-id 3302371490526182153 --principal-total 965 --payout-total 140 --product-code SUZBHLYZHH1001 --workbook-file /path/to/register.xlsx
 ops --json jst order reimburse --outer-order-id 3302371490526182153 --principal-total 965 --payout-total 140 --product-code SUZBHLYZHH1001 --workbook-file /path/to/register.xlsx --execute
 ops --json jst browser learn --scene shop-goods-import
@@ -201,6 +203,23 @@ ops --json jst auth ensure
 - 运行上下文：`runtime/context/`
 - 截图：`screenshots/` 或任务自己的截图目录
 - 业务导出：`output/` 或命令说明中声明的固定目录
+
+## 聚水潭揽收监控
+
+平台层入口：
+
+```bash
+./.venv/bin/ops --json jst order pickup-watch --hours 48 --dry-run
+```
+
+`pickup-watch` 只负责获取付款订单与物流轨迹、按 `data/jst/pickup_watch_config.json` 的关键词识别是否已有揽收节点，并输出统一 JSON。付款时间修正、风险阈值、17:30 后订单处理、报表和微信提醒属于 `运营自动化工具`。
+
+当前已提供可离线验收的模拟订单，覆盖已揽收、各风险时长、猫超付款偏移、17:30 后订单、仅有单号无轨迹、轨迹无揽收关键词等情形。真实执行暂不返回伪造数据；需要通过聚水潭页面学习并补齐以下字段映射后接入：
+
+- 近 48 小时已付款订单查询过滤条件及分页返回
+- `shop_name`、`platform_order_no`、`jst_order_no`、`platform`、`jst_pay_time`
+- 物流公司、物流单号、物流轨迹明细与最新状态
+- 如后续猫超平台提供真实付款时间，再补 `maochao_real_pay_time`
 
 ## 目录
 

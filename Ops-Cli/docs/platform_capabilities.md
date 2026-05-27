@@ -15,6 +15,7 @@
 - `ops --json jst order logistics --outer-order-id <订单号1> --outer-order-id <订单号2>`
 - `ops --json jst order logistics --input <JSON/TXT/CSV路径> --limit <数量>`
 - `ops --json jst order logistics learn`
+- `ops --json jst order pickup-watch --hours 48 --dry-run`
 - `ops --json jst order stats`
 - `ops --json jst order stats learn`
 - `ops --json jst profit yesterday`
@@ -32,6 +33,7 @@
 - 刷单报销工单创建
 - 店铺商品导入
 - 订单物流单笔与批量查询，支持多次传参或 JSON/TXT/CSV 输入文件
+- 订单揽收监控统一 JSON 契约与离线样本；真实付款订单/轨迹字段待 scene 学习后接入
 - 统计 / 利润查询
 - 工单模板沉淀
 

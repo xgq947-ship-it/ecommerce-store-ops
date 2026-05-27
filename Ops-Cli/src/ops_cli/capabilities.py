@@ -89,6 +89,7 @@ _CAPABILITIES = {
         _spec("jst.order.remark", "jst", "order remark", scenes=("order_list",)),
         _spec("jst.order.logistics", "jst", "order logistics", scenes=("order_list", "order_logistics_trace")),
         _spec("jst.order.logistics.learn", "jst", "order logistics learn", scenes=("order_list", "order_logistics_trace"), recovery_policy="explicit"),
+        _spec("jst.order.pickup-watch", "jst", "order pickup-watch", scenes=("order_list", "order_logistics_trace")),
         _spec("jst.order.invoice", "jst", "order invoice", scenes=("order_list", "order_invoice_workorder")),
         _spec("jst.order.invoice.learn", "jst", "order invoice learn", scenes=("order_list", "order_invoice_workorder"), recovery_policy="explicit"),
         _spec("jst.order.reimburse", "jst", "order reimburse", scenes=("order_list",), artifact_types=("xlsx",)),

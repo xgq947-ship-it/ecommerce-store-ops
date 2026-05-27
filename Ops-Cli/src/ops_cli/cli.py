@@ -23,6 +23,7 @@ from ops_cli.platforms.jst.order import learn_order_logistics as learn_jst_order
 from ops_cli.platforms.jst.order import run_order_logistics as run_jst_order_logistics
 from ops_cli.platforms.jst.order import run_order_label as run_jst_order_label
 from ops_cli.platforms.jst.order import run_order_remark as run_jst_order_remark
+from ops_cli.platforms.jst.pickup_watch import run_pickup_watch as run_jst_pickup_watch
 from ops_cli.platforms.jst.profit import get_month_profit, learn_jst_profit_scene
 from ops_cli.platforms.jst.profit import run_yesterday_profit as run_jst_profit_yesterday
 from ops_cli.platforms.jst.product import learn_jst_product_sync
@@ -312,6 +313,32 @@ def jst_order_remark(
             execute=execute,
             remark_text=remark_text,
         ),
+    )
+
+
+@jst_order_app.command("pickup-watch")
+def jst_order_pickup_watch(
+    ctx: typer.Context,
+    hours: int = typer.Option(48, "--hours", help="Lookback hours for paid orders."),
+    shop_name: str | None = typer.Option(None, "--shop-name", help="Optional JST shop name filter."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Use representative local sample orders only."),
+    debug: bool = typer.Option(False, "--debug", help="Include platform debugging diagnostics when supported."),
+    output: str = typer.Option("json", "--output", help="Output format. Currently only json is supported."),
+) -> None:
+    if output.lower() != "json":
+        raise typer.BadParameter("当前仅支持 --output json。")
+    _execute(
+        ctx,
+        command_name="ops jst order pickup-watch",
+        params={
+            "hours": hours,
+            "shop_name": shop_name,
+            "dry_run": dry_run,
+            "debug": debug,
+            "output": output,
+        },
+        handler=lambda: run_jst_pickup_watch(hours=hours, shop_name=shop_name, dry_run=dry_run, debug=debug),
+        force_json=True,
     )
 
 
