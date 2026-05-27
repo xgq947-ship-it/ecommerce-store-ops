@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+import argparse
+import json
+import logging
 import subprocess
 
 from tasks import jst_pickup_watch
@@ -145,3 +148,49 @@ def test_hermes_real_send_runs_in_agent_python(monkeypatch, tmp_path: Path) -> N
     assert called["command"][3] == str(notifier.ops_scripts_dir)
     assert called["kwargs"]["input"] == "聚水潭订单揽收异常提醒\n正式消息"
     assert called["kwargs"]["timeout"] == 45
+
+
+def test_no_abnormal_orders_does_not_send_notification(monkeypatch, tmp_path: Path, capsys) -> None:
+    send_calls: list[tuple[str, str, bool]] = []
+
+    class FakeNotifier:
+        enabled = True
+
+        def send_text(self, title: str, content: str, dry_run: bool = False) -> dict:
+            send_calls.append((title, content, dry_run))
+            return {"success": True, "sent": True}
+
+    monkeypatch.setattr(
+        jst_pickup_watch,
+        "parse_args",
+        lambda: argparse.Namespace(dry_run=False, hours=48, debug=False, notify=True),
+    )
+    monkeypatch.setattr(jst_pickup_watch, "load_config", config)
+    monkeypatch.setattr(
+        jst_pickup_watch,
+        "_setup_logger",
+        lambda timestamp: (logging.getLogger("pickup-watch-test"), tmp_path / "task.log"),
+    )
+    monkeypatch.setattr(
+        jst_pickup_watch,
+        "run_ops_json",
+        lambda command, interactive_recovery: {
+            "success": True,
+            "data": {"checked_at": "2026-05-28T10:00:00+08:00", "orders": []},
+        },
+    )
+    monkeypatch.setattr(
+        jst_pickup_watch.HermesWeChatNotifier,
+        "from_config",
+        lambda *args, **kwargs: FakeNotifier(),
+    )
+
+    assert jst_pickup_watch.main() == 0
+    result = json.loads(capsys.readouterr().out)
+
+    assert send_calls == []
+    assert result["notification"] == {
+        "success": True,
+        "sent": False,
+        "reason": "无异常订单，不发送微信",
+    }

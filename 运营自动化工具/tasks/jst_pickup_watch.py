@@ -163,12 +163,21 @@ def main() -> int:
         )
         notifier_config = config.get("notifier", {}).get("hermes_wechat", {})
         notifier = HermesWeChatNotifier.from_config(notifier_config, force_enabled=args.notify)
-        should_notify = args.dry_run or args.notify or notifier.enabled
-        notification = notifier.send_text("揽收异常", content, dry_run=args.dry_run) if should_notify else {
-            "success": True,
-            "sent": False,
-            "reason": "Hermes 微信通知未启用",
-        }
+        should_notify = bool(abnormal) and (args.dry_run or args.notify or notifier.enabled)
+        if not abnormal:
+            notification = {
+                "success": True,
+                "sent": False,
+                "reason": "无异常订单，不发送微信",
+            }
+        elif should_notify:
+            notification = notifier.send_text("揽收异常", content, dry_run=args.dry_run)
+        else:
+            notification = {
+                "success": True,
+                "sent": False,
+                "reason": "Hermes 微信通知未启用",
+            }
         logger.info("拉取订单数量=%s 异常订单数量=%s counts=%s", counts["checked_orders"], counts["abnormal_orders"], counts)
         logger.info("异常订单号=%s", [item.get("platform_order_no") or item.get("jst_order_no") for item in abnormal])
         logger.info("Hermes 微信推送结果=%s", notification)
