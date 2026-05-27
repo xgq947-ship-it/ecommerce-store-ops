@@ -31,7 +31,6 @@ TASK_REQUIRED_MODULES = {
     "update_maochao_goods": ("openpyxl",),
     "tmcs_sync_jst_shop_goods": ("openpyxl",),
     "process_maochao_bills": ("openpyxl",),
-    "jst_pickup_watch": ("openpyxl",),
 }
 
 TASKS = task_scripts()

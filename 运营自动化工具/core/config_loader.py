@@ -39,8 +39,6 @@ DEFAULT_PATHS = {
     "buyer_show_output_dir": Path("/Users/dasheng/Desktop"),
     "runtime_dir": PROJECT_ROOT / "runtime",
     "logs_dir": PROJECT_ROOT / "logs",
-    "pickup_watch_config": PROJECT_ROOT / "config" / "pickup_watch.json",
-    "pickup_watch_reports_dir": PROJECT_ROOT / "output" / "pickup_watch",
     "ops_cli_root": PROJECT_ROOT.parent / "Ops-Cli",
     "ops_cli_bin": PROJECT_ROOT.parent / "Ops-Cli" / ".venv" / "bin" / "ops",
     "company_nas_mount": Path("/Volumes/suolong.synology.me"),

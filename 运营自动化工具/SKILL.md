@@ -63,7 +63,6 @@ python browser_test.py ...
 - `刷单订单插黄旗` -> `ops --json jst order label`
 - `刷单报销登记` -> `ops --json jst order reimburse`
 - `猫超账单下载阶段` -> `ops --json tmcs bill download`
-- `聚水潭揽收监控` -> `ops --json jst order pickup-watch --hours 48`
 
 真实执行上述依赖平台 session 的任务时，`clients/ops_cli_client.py` 会在每个平台首次业务请求前自动执行一次 `--interactive-login ... auth ensure` 预检，手动执行与后台自动化都生效；同一进程同一平台仅预检一次。`--dry-run` 和 `auth` 命令跳过前置预检；预检后业务调用仍返回 `AUTH_REQUIRED` 时，交互终端会再以 `--interactive-login` 重试一次，由 `Ops-Cli` 完成 SessionHub 恢复。
 
@@ -80,7 +79,6 @@ python browser_test.py ...
 - `猫超账单整理`
 - `买家秀打包`
 - `更新公司网盘索引`
-- `聚水潭揽收监控`
 
 ## 文档同步要求
 

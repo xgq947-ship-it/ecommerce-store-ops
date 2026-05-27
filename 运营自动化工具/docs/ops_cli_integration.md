@@ -20,7 +20,6 @@ ops --json ...
 - `tag_jst_brush_orders` -> `ops --json jst order label`
 - `jst_brush_reimburse_workorder` -> `ops --json jst order reimburse`
 - `tmall_monthly_bill/downloader.py` -> `ops --json tmcs bill download`
-- `jst_pickup_watch` -> `ops --json jst order pickup-watch --hours 48`
 
 ## 返回约定
 
