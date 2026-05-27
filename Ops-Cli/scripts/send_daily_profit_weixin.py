@@ -56,15 +56,8 @@ def run_profit_query() -> dict:
 def format_message(payload: dict) -> str:
     data = payload["data"]
     profit = float(data["profit"])
-    return "\n".join(
-        [
-            "猫超昨日利润",
-            f"日期：{data['date']}",
-            f"店铺：{data['store']}",
-            f"经营利润：{profit:.2f} 元",
-            f"发送时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        ]
-    )
+    date = datetime.strptime(str(data["date"]), "%Y-%m-%d")
+    return f"{date.month}月{date.day}日猫超利润：{profit:.2f}元"
 
 
 def send_weixin(message: str) -> dict:
