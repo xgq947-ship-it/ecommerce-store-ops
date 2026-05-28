@@ -92,16 +92,19 @@ def test_notification_only_lists_abnormal_platform_order_numbers() -> None:
             "platform_order_no": "P-TIMEOUT",
             "risk_level": "已超时",
             "risk_hours": 32.34,
+            "check_time": "2026-05-28T17:30:00+08:00",
         },
         {
             "platform_order_no": "P-HIGH",
             "risk_level": "高危提醒",
             "risk_hours": 21.25,
+            "check_time": "2026-05-28T17:30:00+08:00",
         },
         {
             "platform_order_no": "P-REMIND",
             "risk_level": "普通提醒",
             "risk_hours": 13.5,
+            "check_time": "2026-05-28T17:30:00+08:00",
         },
     ]
 
@@ -110,7 +113,19 @@ def test_notification_only_lists_abnormal_platform_order_numbers() -> None:
         rows=rows,
     )
 
-    assert content == "异常订单 3 单\n已超时：P-TIMEOUT（距付32.3h/超8.3h）\n高危：P-HIGH（距付21.2h）\n提醒：P-REMIND（距付13.5h）"
+    assert content == (
+        "揽收异常 3单\n"
+        "检查：05-28 17:30\n"
+        "\n"
+        "已超时：\n"
+        "1. P-TIMEOUT  距付32.3h  超8.3h\n"
+        "\n"
+        "高危：\n"
+        "1. P-HIGH  距付21.2h  剩2.8h超时\n"
+        "\n"
+        "普通提醒：\n"
+        "1. P-REMIND  距付13.5h"
+    )
     assert not hasattr(jst_pickup_watch, "write_reports")
 
 
@@ -192,5 +207,8 @@ def test_abnormal_orders_send_wecom_with_risk_hours(monkeypatch, tmp_path: Path,
     result = json.loads(capsys.readouterr().out)
 
     assert result["summary"]["abnormal_orders"] == 1
-    assert send_calls == [("## 揽收异常\n异常订单 1 单\n已超时：P-TIMEOUT（距付26.5h/超2.5h）", "markdown")]
+    assert send_calls == [(
+        "揽收异常 1单\n检查：05-28 10:00\n\n已超时：\n1. P-TIMEOUT  距付26.5h  超2.5h",
+        "markdown",
+    )]
     assert result["notification"] == {"success": True, "sent": True}

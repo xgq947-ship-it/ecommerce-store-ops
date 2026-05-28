@@ -110,31 +110,41 @@ def evaluate_orders(orders: list[dict[str, Any]], config: dict[str, Any], *, now
 def build_notification_content(*, counts: dict[str, int], rows: list[dict[str, Any]]) -> str:
     if not rows:
         return "无异常订单"
-    lines = [f"异常订单 {counts['abnormal_orders']} 单"]
-    for level, label in (("已超时", "已超时"), ("高危提醒", "高危"), ("普通提醒", "提醒")):
-        order_numbers = [
-            _format_notification_order(item)
-            for item in rows
-            if item["risk_level"] == level
+    checked_at = ""
+    if rows:
+        try:
+            checked_at = _parse_datetime(str(rows[0]["check_time"]), datetime.now().astimezone()).strftime("%m-%d %H:%M")
+        except (KeyError, TypeError, ValueError):
+            checked_at = ""
+    lines = [f"揽收异常 {counts['abnormal_orders']}单"]
+    if checked_at:
+        lines.append(f"检查：{checked_at}")
+    for level, label in (("已超时", "已超时"), ("高危提醒", "高危"), ("普通提醒", "普通提醒")):
+        order_lines = [
+            _format_notification_order(index, item)
+            for index, item in enumerate((row for row in rows if row["risk_level"] == level), start=1)
         ]
-        order_numbers = [number for number in order_numbers if number]
-        if order_numbers:
-            lines.append(f"{label}：" + "、".join(order_numbers))
+        order_lines = [line for line in order_lines if line]
+        if order_lines:
+            lines.extend(["", f"{label}：", *order_lines])
     return "\n".join(lines)
 
 
-def _format_notification_order(item: dict[str, Any]) -> str:
+def _format_notification_order(index: int, item: dict[str, Any]) -> str:
     order_no = str(item.get("platform_order_no") or item.get("jst_order_no") or "").strip()
     if not order_no:
         return ""
     try:
         risk_hours = float(item["risk_hours"])
     except (KeyError, TypeError, ValueError):
-        return order_no
+        return f"{index}. {order_no}"
     if item.get("risk_level") == "已超时":
         overdue_hours = max(0.0, risk_hours - 24)
-        return f"{order_no}（距付{risk_hours:.1f}h/超{overdue_hours:.1f}h）"
-    return f"{order_no}（距付{risk_hours:.1f}h）"
+        return f"{index}. {order_no}  距付{risk_hours:.1f}h  超{overdue_hours:.1f}h"
+    if item.get("risk_level") == "高危提醒":
+        remaining_hours = max(0.0, 24 - risk_hours)
+        return f"{index}. {order_no}  距付{risk_hours:.1f}h  剩{remaining_hours:.1f}h超时"
+    return f"{index}. {order_no}  距付{risk_hours:.1f}h"
 
 
 def _setup_logger(timestamp: str) -> tuple[logging.Logger, Path]:
@@ -192,10 +202,10 @@ def main() -> int:
                     "success": True,
                     "sent": False,
                     "dry_run": True,
-                    "preview": f"## 揽收异常\n{content}",
+                    "preview": content,
                 }
                 if args.dry_run
-                else send_wecom(f"## 揽收异常\n{content}", msgtype="markdown")
+                else send_wecom(content, msgtype="markdown")
             )
         else:
             notification = {
