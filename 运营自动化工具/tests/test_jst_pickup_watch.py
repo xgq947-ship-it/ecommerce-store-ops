@@ -5,10 +5,8 @@ from pathlib import Path
 import argparse
 import json
 import logging
-import subprocess
 
 from tasks import jst_pickup_watch
-from notifier.hermes_wechat import HermesWeChatNotifier
 
 
 def config() -> dict:
@@ -93,14 +91,17 @@ def test_notification_only_lists_abnormal_platform_order_numbers() -> None:
         {
             "platform_order_no": "P-TIMEOUT",
             "risk_level": "已超时",
+            "risk_hours": 32.34,
         },
         {
             "platform_order_no": "P-HIGH",
             "risk_level": "高危提醒",
+            "risk_hours": 21.25,
         },
         {
             "platform_order_no": "P-REMIND",
             "risk_level": "普通提醒",
+            "risk_hours": 13.5,
         },
     ]
 
@@ -109,56 +110,12 @@ def test_notification_only_lists_abnormal_platform_order_numbers() -> None:
         rows=rows,
     )
 
-    assert content == "异常订单 3 单\n已超时：P-TIMEOUT\n高危：P-HIGH\n提醒：P-REMIND"
+    assert content == "异常订单 3 单\n已超时：P-TIMEOUT（距付32.3h/超8.3h）\n高危：P-HIGH（距付21.2h）\n提醒：P-REMIND（距付13.5h）"
     assert not hasattr(jst_pickup_watch, "write_reports")
 
 
-def test_hermes_dry_run_returns_preview_without_sending() -> None:
-    notifier = HermesWeChatNotifier(enabled=True)
-
-    result = notifier.send_text("聚水潭订单揽收异常提醒", "模拟消息", dry_run=True)
-
-    assert result["success"] is True
-    assert result["dry_run"] is True
-    assert "模拟消息" in result["preview"]
-
-
-def test_hermes_real_send_runs_in_agent_python(monkeypatch, tmp_path: Path) -> None:
-    agent_root = tmp_path / "hermes-agent"
-    python_bin = agent_root / "venv" / "bin" / "python3"
-    python_bin.parent.mkdir(parents=True)
-    python_bin.write_text("", encoding="utf-8")
-    called: dict[str, object] = {}
-    notifier = HermesWeChatNotifier(enabled=True, agent_root=agent_root, env_path=tmp_path / ".env")
-    notifier.ops_scripts_dir = tmp_path / "ops-scripts"
-    notifier.ops_scripts_dir.mkdir()
-
-    def fake_run(command, **kwargs):
-        called["command"] = command
-        called["kwargs"] = kwargs
-        return subprocess.CompletedProcess(command, 0, stdout='{"success": true}', stderr="")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-
-    result = notifier.send_text("聚水潭订单揽收异常提醒", "正式消息")
-
-    assert result["success"] is True
-    assert result["sent"] is True
-    assert called["command"][0] == str(python_bin)
-    assert called["command"][3] == str(notifier.ops_scripts_dir)
-    assert called["kwargs"]["input"] == "聚水潭订单揽收异常提醒\n正式消息"
-    assert called["kwargs"]["timeout"] == 45
-
-
 def test_no_abnormal_orders_does_not_send_notification(monkeypatch, tmp_path: Path, capsys) -> None:
-    send_calls: list[tuple[str, str, bool]] = []
-
-    class FakeNotifier:
-        enabled = True
-
-        def send_text(self, title: str, content: str, dry_run: bool = False) -> dict:
-            send_calls.append((title, content, dry_run))
-            return {"success": True, "sent": True}
+    send_calls: list[tuple[str, str]] = []
 
     monkeypatch.setattr(
         jst_pickup_watch,
@@ -179,11 +136,7 @@ def test_no_abnormal_orders_does_not_send_notification(monkeypatch, tmp_path: Pa
             "data": {"checked_at": "2026-05-28T10:00:00+08:00", "orders": []},
         },
     )
-    monkeypatch.setattr(
-        jst_pickup_watch.HermesWeChatNotifier,
-        "from_config",
-        lambda *args, **kwargs: FakeNotifier(),
-    )
+    monkeypatch.setattr(jst_pickup_watch, "send_wecom", lambda content, msgtype="text": send_calls.append((content, msgtype)))
 
     assert jst_pickup_watch.main() == 0
     result = json.loads(capsys.readouterr().out)
@@ -194,3 +147,50 @@ def test_no_abnormal_orders_does_not_send_notification(monkeypatch, tmp_path: Pa
         "sent": False,
         "reason": "无异常订单，不发送微信",
     }
+
+
+def test_abnormal_orders_send_wecom_with_risk_hours(monkeypatch, tmp_path: Path, capsys) -> None:
+    send_calls: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        jst_pickup_watch,
+        "parse_args",
+        lambda: argparse.Namespace(dry_run=False, hours=48, debug=False, notify=True),
+    )
+    monkeypatch.setattr(jst_pickup_watch, "load_config", config)
+    monkeypatch.setattr(
+        jst_pickup_watch,
+        "_setup_logger",
+        lambda timestamp: (logging.getLogger("pickup-watch-test"), tmp_path / "task.log"),
+    )
+    monkeypatch.setattr(
+        jst_pickup_watch,
+        "run_ops_json",
+        lambda command, interactive_recovery: {
+            "success": True,
+            "data": {
+                "checked_at": "2026-05-28T10:00:00+08:00",
+                "orders": [
+                    {
+                        "platform": "天猫超市",
+                        "platform_order_no": "P-TIMEOUT",
+                        "jst_order_no": "J-TIMEOUT",
+                        "jst_pay_time": "2026-05-27T08:00:00+08:00",
+                        "has_pickup_record": False,
+                    }
+                ],
+            },
+        },
+    )
+    monkeypatch.setattr(
+        jst_pickup_watch,
+        "send_wecom",
+        lambda content, msgtype="text": send_calls.append((content, msgtype)) or {"success": True, "sent": True},
+    )
+
+    assert jst_pickup_watch.main() == 0
+    result = json.loads(capsys.readouterr().out)
+
+    assert result["summary"]["abnormal_orders"] == 1
+    assert send_calls == [("## 揽收异常\n异常订单 1 单\n已超时：P-TIMEOUT（距付26.5h/超2.5h）", "markdown")]
+    assert result["notification"] == {"success": True, "sent": True}

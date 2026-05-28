@@ -19,7 +19,11 @@ if str(ROOT) not in sys.path:
 
 from clients.ops_cli_client import run_ops_json  # noqa: E402
 from core.config_loader import get_path  # noqa: E402
-from notifier.hermes_wechat import HermesWeChatNotifier  # noqa: E402
+
+_HERMES_SCRIPTS = Path.home() / ".hermes" / "scripts"
+if str(_HERMES_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_HERMES_SCRIPTS))
+from send_wecom import send_wecom  # noqa: E402
 
 
 def load_config(path: Path | None = None) -> dict[str, Any]:
@@ -109,7 +113,7 @@ def build_notification_content(*, counts: dict[str, int], rows: list[dict[str, A
     lines = [f"异常订单 {counts['abnormal_orders']} 单"]
     for level, label in (("已超时", "已超时"), ("高危提醒", "高危"), ("普通提醒", "提醒")):
         order_numbers = [
-            str(item.get("platform_order_no") or item.get("jst_order_no") or "")
+            _format_notification_order(item)
             for item in rows
             if item["risk_level"] == level
         ]
@@ -117,6 +121,20 @@ def build_notification_content(*, counts: dict[str, int], rows: list[dict[str, A
         if order_numbers:
             lines.append(f"{label}：" + "、".join(order_numbers))
     return "\n".join(lines)
+
+
+def _format_notification_order(item: dict[str, Any]) -> str:
+    order_no = str(item.get("platform_order_no") or item.get("jst_order_no") or "").strip()
+    if not order_no:
+        return ""
+    try:
+        risk_hours = float(item["risk_hours"])
+    except (KeyError, TypeError, ValueError):
+        return order_no
+    if item.get("risk_level") == "已超时":
+        overdue_hours = max(0.0, risk_hours - 24)
+        return f"{order_no}（距付{risk_hours:.1f}h/超{overdue_hours:.1f}h）"
+    return f"{order_no}（距付{risk_hours:.1f}h）"
 
 
 def _setup_logger(timestamp: str) -> tuple[logging.Logger, Path]:
@@ -135,7 +153,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dry-run", action="store_true", help="使用模拟订单，不请求真实聚水潭、不发送微信")
     parser.add_argument("--hours", type=int, default=None, help="检查最近付款订单小时数")
     parser.add_argument("--debug", action="store_true", help="透传 Ops-Cli 调试参数")
-    parser.add_argument("--notify", action="store_true", help="通过 Hermes 微信推送检查结果")
+    parser.add_argument("--notify", action="store_true", help="通过 send_wecom 推送检查结果")
     return parser.parse_args()
 
 
@@ -161,9 +179,7 @@ def main() -> int:
             counts=counts,
             rows=abnormal,
         )
-        notifier_config = config.get("notifier", {}).get("hermes_wechat", {})
-        notifier = HermesWeChatNotifier.from_config(notifier_config, force_enabled=args.notify)
-        should_notify = bool(abnormal) and (args.dry_run or args.notify or notifier.enabled)
+        should_notify = bool(abnormal) and (args.dry_run or args.notify)
         if not abnormal:
             notification = {
                 "success": True,
@@ -171,16 +187,25 @@ def main() -> int:
                 "reason": "无异常订单，不发送微信",
             }
         elif should_notify:
-            notification = notifier.send_text("揽收异常", content, dry_run=args.dry_run)
+            notification = (
+                {
+                    "success": True,
+                    "sent": False,
+                    "dry_run": True,
+                    "preview": f"## 揽收异常\n{content}",
+                }
+                if args.dry_run
+                else send_wecom(f"## 揽收异常\n{content}", msgtype="markdown")
+            )
         else:
             notification = {
                 "success": True,
                 "sent": False,
-                "reason": "Hermes 微信通知未启用",
+                "reason": "通知未启用",
             }
         logger.info("拉取订单数量=%s 异常订单数量=%s counts=%s", counts["checked_orders"], counts["abnormal_orders"], counts)
         logger.info("异常订单号=%s", [item.get("platform_order_no") or item.get("jst_order_no") for item in abnormal])
-        logger.info("Hermes 微信推送结果=%s", notification)
+        logger.info("send_wecom 推送结果=%s", notification)
         result = {
             "success": True,
             "task": "jst_pickup_watch",
