@@ -18,6 +18,7 @@ from core.task_registry import resolve_task, task_required_modules, task_scripts
 
 ROOT = Path(__file__).resolve().parent
 LOG_DIR = get_path("logs_dir")
+RUNS_DIR = get_path("runtime_dir") / "runs"
 
 TASKS = task_scripts()
 
@@ -98,7 +99,100 @@ def write_log(task: str, payload: dict) -> Path:
     return path
 
 
+def run_workflow(workflow_args: list[str]) -> int:
+    """workflow 子命令入口：python3 run.py workflow <id> [--dry-run] [...]。
+
+    完全绕开旧任务解析（resolve_task）。无论成功失败都写外层 TaskContext + 日志；
+    workflow 实际执行的 step 级记录由 WorkflowRunner 落到 runtime/runs/。
+    """
+    from core.runtime import WorkflowRunner
+    from core.runtime.registry import available_workflows, discover_workflow
+
+    if not workflow_args:
+        valid = "、".join(available_workflows()) or "（无）"
+        print(f"缺少 workflow id；用法：python3 run.py workflow <id> [--dry-run]\n可用 workflow：{valid}", file=sys.stderr)
+        return 2
+
+    workflow_id = workflow_args[0]
+    extra_args = workflow_args[1:]
+    dry_run = "--dry-run" in extra_args
+    month = None
+    if "--month" in extra_args:
+        index = extra_args.index("--month")
+        if index + 1 < len(extra_args):
+            month = extra_args[index + 1]
+
+    context = TaskContext(f"workflow_{workflow_id}")
+    context.add_input("workflow_id", workflow_id)
+    context.add_input("workflow_args", extra_args)
+    context.add_input("dry_run", dry_run)
+    if month is not None:
+        context.add_input("month", month)
+
+    inputs: dict = {"dry_run": dry_run, "args": extra_args}
+    if month is not None:
+        inputs["month"] = month
+
+    try:
+        workflow = discover_workflow(workflow_id)
+    except SystemExit as exc:
+        message = str(exc)
+        context.add_error(message)
+        context_path = context.finish("failed")
+        print(message, file=sys.stderr)
+        print(f"任务上下文：{context_path}")
+        return 2
+
+    started_at = datetime.now().isoformat(timespec="seconds")
+    runner = WorkflowRunner(RUNS_DIR)
+    run = runner.run(workflow, inputs=inputs, dry_run=dry_run)
+    finished_at = datetime.now().isoformat(timespec="seconds")
+
+    run_dict = run.to_dict()
+    log_payload = {
+        "workflow_id": workflow_id,
+        "started_at": started_at,
+        "finished_at": finished_at,
+        "dry_run": dry_run,
+        "run": run_dict,
+    }
+    log_path = write_log(f"workflow_{workflow_id}", log_payload)
+
+    context.add_output("run_id", run.run_id)
+    context.add_output("status", run.status)
+    context.add_output("started_at", started_at)
+    context.add_output("finished_at", finished_at)
+    context.add_output("log_path", log_path)
+    context.add_artifact(log_path, kind="run_log")
+    if runner.last_run_dir is not None:
+        context.add_output("run_dir", str(runner.last_run_dir))
+        context.add_artifact(runner.last_run_dir / "run.json", kind="workflow_run")
+    for artifact in run.artifacts:
+        if artifact.path:
+            context.add_artifact(artifact.path, kind=artifact.role or artifact.type)
+
+    succeeded = run.status in {"success", "dry_run_success"}
+    if not succeeded:
+        for err in run.errors:
+            context.add_error(err)
+        context_status = "failed"
+    elif dry_run:
+        context_status = "dry_run_success"
+    else:
+        context_status = "success"
+    context_path = context.finish(context_status)
+
+    print(json.dumps(run_dict, ensure_ascii=False, indent=2))
+    print(f"\n日志：{log_path}")
+    if runner.last_run_dir is not None:
+        print(f"运行目录：{runner.last_run_dir}")
+    print(f"任务上下文：{context_path}")
+    return 0 if succeeded else 1
+
+
 def main() -> int:
+    if len(sys.argv) >= 2 and sys.argv[1] == "workflow":
+        return run_workflow(sys.argv[2:])
     args = parse_args()
     if args.list:
         for task_name, task_script in sorted(TASKS.items()):

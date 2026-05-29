@@ -16,9 +16,11 @@
 
 当前核心层：
 
-- `run.py`：唯一统一任务入口，只做任务解析、调度、Python 环境选择、日志和 `runtime/context` 记录。
-- `core/task_registry.py`：任务注册和触发词来源，通过扫描 `tasks/` 下的 `task.yaml` 动态加载。
-- `tasks/`：业务任务目录，负责具体流程、参数解析、dry-run、业务日志和输出。
+- `run.py`：唯一统一任务入口，只做任务解析、调度、Python 环境选择、日志和 `runtime/context` 记录；额外拦截 `workflow <id>` 子命令转给 workflow runtime。
+- `core/task_registry.py`：旧任务注册和触发词来源，通过扫描 `tasks/` 下的 `task.yaml` 动态加载。
+- `core/runtime/`：workflow runtime 内核（models/result/storage/workflow/runner/registry），把业务流程拆成 step 化执行，落 `runtime/runs/`。不含任何业务或平台逻辑。
+- `tasks/`：旧脚本业务任务目录，负责具体流程、参数解析、dry-run、业务日志和输出。保持不变。
+- `workflows/`：新 step 化 workflow（包装层），每个目录导出 `build_workflow()`，复用 `tasks/` 成熟函数，不重写业务逻辑。
 - `clients/`：只保留业务侧到 `Ops-Cli` 的桥接。
 - `Ops-Cli/sessionhub/`：统一登录态中心、9222 Chrome 会话入口、动态请求捕获入口，不放业务逻辑。
 - `Ops-Cli/src/ops_cli/capabilities.py` 与 `execution.py`：统一能力注册（各平台通过 `platform.py` 的 `register()` 动态注册）、交互登录策略、JSON 输出和错误分类入口。
@@ -82,6 +84,7 @@ SessionHub 不做：
 - 调用 `core.task_registry.resolve_task()`。
 - 选择 Python 解释器。
 - 调用任务脚本。
+- 拦截 `workflow <id>` 子命令并转给 `core.runtime` WorkflowRunner（绕开 `resolve_task`，不影响旧任务）。
 - 写外层日志和 `TaskContext`。
 
 不允许：
@@ -107,6 +110,19 @@ SessionHub 不做：
 - 需要运行追踪时写 `TaskContext`。
 - 有可重放失败项时写 `runtime/retry/`。
 - 长期路径和业务数据源路径必须写入 `config/paths.yaml`，通过 `core.config_loader.get_path()` 读取；任务内不要新增硬编码绝对路径。项目相对路径（runtime_dir、logs_dir 等）已内置在 `DEFAULT_PATHS` 中，个人路径（桌面、下载、微信文件等）需在 `config/paths.yaml` 中配置，缺失时会提示参考 `config/paths.yaml.example`。
+
+## workflows 规则
+
+`workflows/` 是 step 化业务流程的包装层，与 `tasks/` 并存、不替代。
+
+- 每个 workflow 一个目录 `workflows/<id>/`，导出 `build_workflow() -> Workflow`，`run.py workflow <id>` 自动发现，无需改 `run.py` 或 registry。
+- step handler 复用 `tasks/` 已有成熟函数，不在 workflow 层重写账单解析、Excel、平台下载逻辑。
+- 平台动作仍只能通过 `clients/ops_cli_client.py` 调 `ops --json ...`；workflow 层不直接请求平台、不碰 Cookie/Token/Selector/Playwright/CDP/SessionHub。
+- `--dry-run` 不得触发真实平台下载或写最终文件。
+- step 失败语义：`required=True` 失败中断整条流程；`required=False` 失败后继续。
+- 产物用 `core.runtime.Artifact` 记录（`type/role/name/path/platform/month/metadata`），落 `runtime/runs/`。
+- 新增/修改 workflow 后用 `python3 run.py workflow <id> --dry-run` 验证，并保证对应旧任务命令仍可用。
+- 标准与示例见 [workflow runtime 说明](docs/workflow_runtime.md)。
 
 ## clients 规则
 
@@ -166,4 +182,6 @@ context 应尽量包含：
 - 不默认引入数据库、前端页面或常驻服务。
 - 不把临时探索代码当长期任务提交。
 - 不破坏已验证的 SessionHub 核心结构和现有任务命令。
+- 不在 workflow 层重写 `tasks/` 的成熟业务逻辑，也不把平台逻辑写进 `workflows/`。
+- 不让 workflow 的 `--dry-run` 触发真实平台下载或写最终文件。
 - 不把敏感 Cookie、Token、Authorization 明文写入文档、日志或示例。

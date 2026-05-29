@@ -23,12 +23,14 @@
 ```text
 运营自动化工具
   -> run.py
-  -> core/task_registry.py (扫描 tasks/ 下 task.yaml 动态加载)
-  -> tasks/* (每个任务目录含 task.yaml 声明文件)
-  -> clients/ops_cli_client.py
-  -> subprocess
-  -> Ops-Cli
+  ├─ <中文任务名> -> core/task_registry.py (扫描 tasks/ 下 task.yaml 动态加载)
+  │                  -> tasks/* (每个任务目录含 task.yaml 声明文件)
+  │                  -> clients/ops_cli_client.py -> subprocess -> Ops-Cli
+  └─ workflow <id> -> core/runtime/registry.py (扫描 workflows/<id>/workflow.py)
+                       -> core/runtime WorkflowRunner -> 复用 tasks/* 成熟函数
 ```
+
+两条链路并存：旧中文任务名走 `tasks/`（不变）；新 `workflow` 子命令走 `workflows/`，把同一条业务流水线拆成 step 化流程，逐步落运行记录到 `runtime/runs/`。workflow 是包装层，复用 `tasks/` 现成实现，不重写业务逻辑。详见 [workflow runtime 说明](docs/workflow_runtime.md)。
 
 ## 当前任务
 
@@ -44,6 +46,13 @@
 - `tmcs_sync_jst_shop_goods`
 - `jst_pickup_watch`
 - `retry_queue`
+
+## 当前 workflow
+
+step 化流程，入口 `python3 run.py workflow <id>`：
+
+- `demo` — 最小可运行示例，验证 workflow runtime 入口
+- `tmall_monthly_bill` — 猫超月账单整理的包装层，复用 `process_maochao_bills` 同一套实现
 
 ## 任务与 Ops-Cli 的对应关系
 
@@ -70,6 +79,9 @@ python3 run.py 查看失败任务
 python3 run.py 更新公司网盘索引 --dry-run
 python3 run.py 聚水潭揽收监控 --dry-run --notify
 python3 run.py 聚水潭揽收监控 --notify
+python3 run.py workflow demo --dry-run
+python3 run.py workflow tmall_monthly_bill --dry-run
+python3 run.py workflow tmall_monthly_bill --month 2026-05 --dry-run
 ```
 
 ## 聚水潭订单揽收监控
@@ -105,6 +117,7 @@ python3 run.py 聚水潭揽收监控 --notify
 详见：
 
 - [架构说明](docs/architecture.md)
+- [workflow runtime 说明](docs/workflow_runtime.md)
 - [项目边界说明](docs/project_boundary.md)
 - [Skill 开发规范](docs/skill_development_spec.md)
 - [Ops-Cli 调用规范](docs/ops_cli_integration.md)
@@ -120,10 +133,17 @@ python3 run.py 聚水潭揽收监控 --notify
     paths.yaml
     paths.yaml.example
   core/
-  tasks/
+    task_registry.py    # 旧任务发现（tasks/*/task.yaml）
+    runtime/            # workflow runtime 内核（models/result/storage/workflow/runner/registry）
+  tasks/                # 旧脚本任务（不变）
+  workflows/            # 新 step 化 workflow（包装层）
+    demo/
+    tmall_monthly_bill/
   skills/
   logs/
   runtime/
+    context/            # 旧任务运行上下文
+    runs/               # workflow 运行记录（YYYY-MM/run_xxx/）
   docs/
   run.py
 ```

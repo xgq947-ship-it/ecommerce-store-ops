@@ -14,3 +14,7 @@ __pycache__/
 */output/
 */screenshots/
 Ops-Cli/video/
+
+# core/runtime 是 workflow runtime 源码包，不是数据目录；需从上面的 runtime/ 忽略规则中豁免
+!运营自动化工具/core/runtime/
+!运营自动化工具/core/runtime/*.py

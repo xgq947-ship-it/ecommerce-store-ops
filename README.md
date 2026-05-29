@@ -46,6 +46,16 @@ python3 run.py 更新猫超商品列表 --dry-run
 python3 run.py 更新聚水潭资料 --dry-run
 ```
 
+业务层还新增了 step 化的 workflow 入口（旧命令完全不受影响）：
+
+```bash
+cd 运营自动化工具
+python3 run.py workflow demo --dry-run
+python3 run.py workflow tmall_monthly_bill --dry-run
+```
+
+workflow 是既有任务的包装层：复用 `tasks/` 的成熟业务实现，把流程拆成可追踪的步骤，逐步落运行记录到 `runtime/runs/`。详见 [运营自动化工具/docs/workflow_runtime.md](运营自动化工具/docs/workflow_runtime.md)。
+
 ## 猫超月账单链路
 
 当前猫超月账单整理已经走通正式链路：

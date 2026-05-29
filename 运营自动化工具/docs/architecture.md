@@ -26,12 +26,23 @@
 
 ```text
 run.py
-  -> core/task_registry.py (扫描 tasks/ 下的 task.yaml 动态加载)
-  -> tasks/*
-  -> clients/ops_cli_client.py
-  -> ops --json ...
-  -> Ops-Cli capability runner
+  ├─ <中文任务名>
+  │    -> core/task_registry.py (扫描 tasks/ 下的 task.yaml 动态加载)
+  │    -> tasks/*
+  │    -> clients/ops_cli_client.py -> ops --json ... -> Ops-Cli capability runner
+  └─ workflow <id>
+       -> core/runtime/registry.py (扫描 workflows/<id>/workflow.py)
+       -> core/runtime WorkflowRunner
+       -> workflows/<id>/steps.py (复用 tasks/* 成熟函数)
 ```
+
+## 两条执行链路
+
+- 旧链路：中文任务名 / 别名 / 模糊触发 -> `tasks/*` 单脚本执行，落 `runtime/context`。保持不变。
+- 新链路：`workflow <id>` -> `workflows/*` step 化流程执行，落 `runtime/runs/YYYY-MM/run_xxx/`（`run.json` + `steps/<id>.json` + `artifacts.json`）。
+- workflow 是包装层，复用 `tasks/` 的成熟实现，不重写业务逻辑；平台动作仍统一通过 `clients/ops_cli_client.py` 调 `Ops-Cli`。
+- 边界与旧链路一致：业务层（`tasks/` 与 `workflows/`）都不写平台 URL / Cookie / Token / Selector / Playwright / CDP / SessionHub。
+- 细节见 [workflow runtime 说明](workflow_runtime.md)。
 
 ## 说明
 
