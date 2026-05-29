@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from core.runtime.archive import RunIndex
 from core.runtime.models import Artifact, StepRun, TaskRun, Workflow, WorkflowStep
+from core.runtime.notify import send_notification
 from core.runtime.result import OpsResult, failure_result, success_result
 from core.runtime.runner import StepContext, WorkflowRunner
 from core.runtime.storage import RunStorage
@@ -25,6 +26,7 @@ __all__ = [
     "WorkflowRunner",
     "RunStorage",
     "RunIndex",
+    "send_notification",
     "build_workflow",
     "get_step",
     "step",

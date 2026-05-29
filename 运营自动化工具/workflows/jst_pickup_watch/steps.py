@@ -15,6 +15,7 @@ import argparse
 from datetime import datetime
 
 from core.runtime import StepContext, failure_result, success_result
+from core.runtime.notify import send_notification
 
 import tasks.jst_pickup_watch as legacy
 
@@ -97,10 +98,10 @@ def notify_if_needed(ctx: StepContext):
     if not abnormal:
         notification = {"success": True, "sent": False, "reason": "无异常订单，不发送微信"}
     elif flags.dry_run:
-        # dry-run 绝不发送真实微信，只产出预览。
-        notification = {"success": True, "sent": False, "dry_run": True, "preview": content}
+        # 统一通知入口在 dry-run 下只产预览、绝不发送真实微信。
+        notification = send_notification(content, dry_run=True, msgtype="markdown")
     elif flags.notify:
-        notification = legacy.send_wecom(content, msgtype="markdown")
+        notification = send_notification(content, dry_run=False, msgtype="markdown")
     else:
         notification = {"success": True, "sent": False, "reason": "通知未启用"}
 

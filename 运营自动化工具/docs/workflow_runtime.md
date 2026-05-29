@@ -137,6 +137,21 @@ return success_result(artifacts=[art])     # 方式一：随结果返回
 
 runner 会把每个 step 的 artifacts 汇总到 `TaskRun.artifacts`，结束时写 `artifacts.json`。约定 `role` 表达用途（如 `hdb_source / statement_list / promotion_source / output`），便于下游消费。
 
+## 统一通知
+
+`core.runtime.send_notification` 是各 workflow 共用的通知入口（提醒 / 失败告警），把「dry-run 只产预览、不发送；真实执行才推送」这条安全语义收敛到一处：
+
+```python
+from core.runtime import send_notification
+
+# dry-run：绝不真实发送，只返回 {"sent": False, "dry_run": True, "preview": content}
+notification = send_notification(content, dry_run=ctx.dry_run, msgtype="markdown")
+```
+
+- 底层复用本机 `~/.hermes/scripts/send_wecom.py`（本地通知工具，不是电商平台 API）。
+- 可注入 `sender=` 便于测试，不传则懒加载真实 `send_wecom`。
+- `jst_pickup_watch` 的 `notify_if_needed` 已改为复用此入口；新 workflow 要发提醒时统一走它，不要各自直接 import `send_wecom`。
+
 ## 哪些代码不能写进业务层（workflows/ 与 tasks/）
 
 与既有边界一致：

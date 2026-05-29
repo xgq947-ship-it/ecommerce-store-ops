@@ -105,10 +105,13 @@ def test_real_notify_sends_when_abnormal(monkeypatch, tmp_path: Path) -> None:
     sent: list = []
     monkeypatch.setattr(legacy, "load_config", _config)
     monkeypatch.setattr(legacy, "run_ops_json", _abnormal_payload)
+    # 通过统一通知入口的可注入 sender 拦截真实发送。
+    from core.runtime import notify as notify_module
+
     monkeypatch.setattr(
-        legacy,
-        "send_wecom",
-        lambda content, msgtype="text": sent.append((content, msgtype)) or {"success": True, "sent": True},
+        notify_module,
+        "_load_send_wecom",
+        lambda: (lambda content, msgtype="text": sent.append((content, msgtype)) or {"success": True, "sent": True}),
     )
 
     runner = WorkflowRunner(tmp_path)
