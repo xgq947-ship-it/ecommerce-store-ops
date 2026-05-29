@@ -190,9 +190,51 @@ def run_workflow(workflow_args: list[str]) -> int:
     return 0 if succeeded else 1
 
 
+def list_runs_cli(extra_args: list[str]) -> int:
+    """python3 run.py runs [--limit N] [--workflow ID] [--reindex]。"""
+    from core.runtime import RunIndex
+
+    parser = argparse.ArgumentParser(prog="run.py runs", description="列出 workflow 历史运行")
+    parser.add_argument("--limit", type=int, default=20)
+    parser.add_argument("--workflow", default=None)
+    parser.add_argument("--reindex", action="store_true", help="从现有 run.json 重建索引")
+    args = parser.parse_args(extra_args)
+
+    index = RunIndex(RUNS_DIR)
+    if args.reindex:
+        count = index.reindex()
+        print(f"已重建索引：{count} 条 -> {index.index_path}")
+    runs = index.list_runs(limit=args.limit, workflow_id=args.workflow)
+    print(json.dumps(runs, ensure_ascii=False, indent=2))
+    return 0
+
+
+def search_artifacts_cli(extra_args: list[str]) -> int:
+    """python3 run.py artifacts [query] [--role R] [--platform P] [--month M] [--limit N]。"""
+    from core.runtime import RunIndex
+
+    parser = argparse.ArgumentParser(prog="run.py artifacts", description="检索 workflow 产物")
+    parser.add_argument("query", nargs="?", default=None)
+    parser.add_argument("--role", default=None)
+    parser.add_argument("--platform", default=None)
+    parser.add_argument("--month", default=None)
+    parser.add_argument("--limit", type=int, default=50)
+    args = parser.parse_args(extra_args)
+
+    results = RunIndex(RUNS_DIR).search_artifacts(
+        args.query, role=args.role, platform=args.platform, month=args.month, limit=args.limit
+    )
+    print(json.dumps(results, ensure_ascii=False, indent=2))
+    return 0
+
+
 def main() -> int:
     if len(sys.argv) >= 2 and sys.argv[1] == "workflow":
         return run_workflow(sys.argv[2:])
+    if len(sys.argv) >= 2 and sys.argv[1] == "runs":
+        return list_runs_cli(sys.argv[2:])
+    if len(sys.argv) >= 2 and sys.argv[1] == "artifacts":
+        return search_artifacts_cli(sys.argv[2:])
     args = parse_args()
     if args.list:
         for task_name, task_script in sorted(TASKS.items()):

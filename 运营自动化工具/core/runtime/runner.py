@@ -129,6 +129,12 @@ class WorkflowRunner:
         storage.write_artifacts()
         storage.write_run()
         self.last_run_dir = storage.run_dir
+        try:
+            from core.runtime.archive import RunIndex
+
+            RunIndex(self.runs_root).append(run, storage.run_dir)
+        except Exception:  # noqa: BLE001 - 归档索引失败不应影响主流程
+            pass
         return run
 
     @staticmethod

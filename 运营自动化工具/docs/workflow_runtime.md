@@ -58,6 +58,26 @@ runtime/runs/YYYY-MM/run_xxx/
 
 `run.py workflow` 还会额外写一条 `logs/workflow_<id>_<stamp>.json` 和外层 `runtime/context`，与旧任务保持一致的可观测性。
 
+## 运行归档与产物检索
+
+每次 workflow 运行结束，`WorkflowRunner` 会把一条精简记录追加到全局索引 `runtime/runs/index.jsonl`（run_id、workflow、状态、时间、run_dir、产物摘要），便于跨 run 检索而无需逐个打开 `run.json`。
+
+```bash
+# 列出最近运行（默认 20 条，可按 workflow 过滤）
+python3 run.py runs --limit 10
+python3 run.py runs --workflow tmall_monthly_bill
+
+# 从现有 run.json 重建索引（回填历史运行）
+python3 run.py runs --reindex
+
+# 检索产物（按关键词 / role / platform / month）
+python3 run.py artifacts 月账单
+python3 run.py artifacts --role output --platform tmcs
+python3 run.py artifacts --month 2026-05
+```
+
+索引由 `core.runtime.RunIndex` 维护，落在 `runtime/runs/` 内（已被 `.gitignore` 排除，不进版本库）。索引写入失败不会影响 workflow 主流程。
+
 ## 新增一个 workflow 的标准方式
 
 1. 在 `workflows/` 下新建目录 `workflows/<id>/`，加空 `__init__.py`。
