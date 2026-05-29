@@ -156,6 +156,37 @@ def test_download_supports_download_center_poll(tmp_path, monkeypatch) -> None:
     assert result.data["downloaded_files"][0].endswith(".xlsx")
 
 
+def test_download_reuses_existing_wxt_file_when_template_source_missing(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    output_dir = tmp_path / "downloads"
+    output_dir.mkdir()
+    existing = output_dir / "万象台推广账单_2026-04.csv"
+    existing.write_text("交易日期,收入,支出\n2026-04-01,0,0\n", encoding="utf-8")
+    _write_template(
+        tmp_path,
+        sources={
+            "zdx": {
+                "url": "https://example.com/zdx/export",
+                "method": "POST",
+                "headers": {},
+                "cookies": [],
+                "post_data_json": {},
+            }
+        },
+    )
+    monkeypatch.setattr(promotion_bill, "check_scene_or_fail", lambda *args, **kwargs: {"status": "valid"})
+    monkeypatch.setattr(
+        promotion_bill,
+        "learn_promotion_bill",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("existing wxt file should not trigger learn")),
+    )
+
+    result = promotion_bill.run_promotion_bill_download(source="wxt", start="2026-04-01", end="2026-04-30")
+
+    assert result.data["failed"] == []
+    assert result.data["downloaded_files"] == [str(existing.resolve())]
+
+
 def test_download_surfaces_business_auth_failure_before_polling(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(promotion_bill.time, "sleep", lambda *_args, **_kwargs: None)
     scene = {"url": "https://example.com/export", "method": "POST", "headers": {}, "cookies": [], "post_data_json": {}}

@@ -224,14 +224,20 @@ ops --json jst auth ensure
 ```text
 Ops-Cli/
   src/ops_cli/
-    cli.py
+    cli.py          # 入口，自动扫描 platforms/ 下 platform.py 注册命令
+    cli_helpers.py  # 共享执行辅助（_execute, _get_json_flag）
+    capabilities.py # 动态能力注册表（各平台通过 register_capabilities() 注册）
     config.py
     output.py
     logger.py
     integrations/
     platforms/
       jst/
+        platform.py  # JST 命令注册入口，导出 register(app, capabilities)
+        ...
       tmcs/
+        platform.py  # TMCS 命令注册入口，导出 register(app, capabilities)
+        ...
   data/
   logs/
   runtime/

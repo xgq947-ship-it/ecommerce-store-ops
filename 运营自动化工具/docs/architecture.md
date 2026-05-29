@@ -26,7 +26,7 @@
 
 ```text
 run.py
-  -> core/task_registry.py
+  -> core/task_registry.py (扫描 tasks/ 下的 task.yaml 动态加载)
   -> tasks/*
   -> clients/ops_cli_client.py
   -> ops --json ...

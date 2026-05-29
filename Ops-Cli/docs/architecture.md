@@ -24,9 +24,15 @@ CLI
 ## 目录职责
 
 - `src/ops_cli/cli.py`
-  - 唯一正式 CLI 入口
+  - 唯一正式 CLI 入口，自动扫描 `platforms/` 下所有 `platform.py` 并调用 `register()` 注册命令
+- `src/ops_cli/cli_helpers.py`
+  - 共享执行辅助函数（`_execute`、`_get_json_flag`），供各平台 `platform.py` 使用
 - `src/ops_cli/capabilities.py`
-  - 注册平台能力、依赖 scene、产物类型和登录恢复策略
+  - 能力注册表（各平台通过 `register_capabilities()` 动态注册）、scene 依赖、产物类型和登录恢复策略
+- `src/ops_cli/platforms/jst/platform.py`
+  - JST 平台命令注册入口，导出 `register(app, capabilities)` 函数
+- `src/ops_cli/platforms/tmcs/platform.py`
+  - TMCS 平台命令注册入口，导出 `register(app, capabilities)` 函数
 - `src/ops_cli/execution.py`
   - 统一执行生命周期、JSON 契约、错误分类、context 和恢复摘要
 - `src/ops_cli/integrations/sessionhub.py`

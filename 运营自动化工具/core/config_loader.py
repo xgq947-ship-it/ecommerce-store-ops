@@ -5,50 +5,48 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
+# Paths derived from project structure — always available without config
 DEFAULT_PATHS = {
     "project_root": PROJECT_ROOT,
-    "desktop_dir": Path("/Users/dasheng/Desktop"),
-    "ecommerce_brain_dir": Path("/Users/dasheng/Desktop/电商Brain"),
-    "product_library_dir": Path("/Users/dasheng/Desktop/电商Brain/01-产品库"),
-    "reimbursement_dir": Path("/Users/dasheng/Desktop/公司费用报销"),
-    "brush_register_dir": Path("/Users/dasheng/Desktop/公司费用报销"),
-    "backup_dir": Path("/Users/dasheng/Desktop/公司费用报销/备份"),
-    "brush_register_pattern": Path("天猫超市*月刷单登记明细.xlsx"),
-    "brush_orders_dir": Path("/Users/dasheng/Desktop/公司费用报销/今日刷单表格"),
-    "brush_product_file": Path("/Users/dasheng/Desktop/公司费用报销/今日刷单产品表.xlsx"),
-    "wechat_file_dir": Path(
-        "/Users/dasheng/Library/Containers/com.tencent.xinWeChat/Data/Documents/"
-        "xwechat_files/wxid_qkre05gkwlkd21_e73b/msg/file"
-    ),
-    "jst_product_file": Path("/Users/dasheng/Desktop/电商Brain/02-运营店铺/主数据/聚水潭商品资料（最新）.xlsx"),
-    "jst_product_master_file": Path("/Users/dasheng/Desktop/电商Brain/02-运营店铺/主数据/聚水潭商品资料（最新）.xlsx"),
-    "jst_product_import_file": Path("/Users/dasheng/Downloads/聚水潭商品资料（最新）.xlsx"),
-    "maochao_goods_master_file": Path(
-        "/Users/dasheng/Desktop/电商Brain/02-运营店铺/主数据/猫超商品列表导出 (最新）.xlsx"
-    ),
-    "tmall_goods_master_file": Path(
-        "/Users/dasheng/Desktop/电商Brain/02-运营店铺/主数据/猫超商品列表导出 (最新）.xlsx"
-    ),
-    "maochao_monthly_bill_dir": Path("/Users/dasheng/Desktop"),
-    "maochao_work_dir": Path("/Users/dasheng/Desktop"),
-    "downloads_dir": Path("/Users/dasheng/Downloads"),
-    "tmall_bill_download_dir": Path("/Users/dasheng/Downloads"),
-    "tmall_hdb_glob": Path("/Users/dasheng/Downloads/HDB*.xlsx"),
-    "tmall_statement_list_file": Path("/Users/dasheng/Downloads/对账单列表.xlsx"),
-    "tmall_goods_import_file": Path("/Users/dasheng/Downloads/猫超商品列表导出.xlsx"),
-    "buyer_show_output_dir": Path("/Users/dasheng/Desktop"),
     "runtime_dir": PROJECT_ROOT / "runtime",
     "logs_dir": PROJECT_ROOT / "logs",
     "pickup_watch_config": PROJECT_ROOT / "config" / "pickup_watch.json",
     "ops_cli_root": PROJECT_ROOT.parent / "Ops-Cli",
     "ops_cli_bin": PROJECT_ROOT.parent / "Ops-Cli" / ".venv" / "bin" / "ops",
-    "company_nas_mount": Path("/Volumes/suolong.synology.me"),
-    "company_nas_product_root": Path("/Volumes/suolong.synology.me/产品资料（运营）/1.产品资料"),
-    "nas_product_library_dir": Path("/Users/dasheng/Desktop/电商Brain/01-产品库"),
     "nas_index_dir": PROJECT_ROOT / "runtime" / "nas_index",
     "nas_index_json": PROJECT_ROOT / "runtime" / "nas_index" / "company_nas_tree.json",
     "nas_index_md": PROJECT_ROOT / "runtime" / "nas_index" / "company_nas_tree.md",
     "nas_index_csv": PROJECT_ROOT / "runtime" / "nas_index" / "company_nas_files.csv",
+    "brush_register_pattern": Path("天猫超市*月刷单登记明细.xlsx"),
+}
+
+# Paths that must be configured in config/paths.yaml
+_PERSONAL_PATHS = {
+    "desktop_dir",
+    "downloads_dir",
+    "ecommerce_brain_dir",
+    "product_library_dir",
+    "reimbursement_dir",
+    "brush_register_dir",
+    "backup_dir",
+    "brush_orders_dir",
+    "brush_product_file",
+    "wechat_file_dir",
+    "jst_product_file",
+    "jst_product_master_file",
+    "jst_product_import_file",
+    "maochao_goods_master_file",
+    "tmall_goods_master_file",
+    "maochao_monthly_bill_dir",
+    "maochao_work_dir",
+    "tmall_bill_download_dir",
+    "tmall_hdb_glob",
+    "tmall_statement_list_file",
+    "tmall_goods_import_file",
+    "buyer_show_output_dir",
+    "company_nas_mount",
+    "company_nas_product_root",
+    "nas_product_library_dir",
 }
 
 
@@ -81,5 +79,10 @@ def load_paths(config_path: Path | None = None) -> dict[str, Path]:
 def get_path(name: str) -> Path:
     paths = load_paths()
     if name not in paths:
+        if name in _PERSONAL_PATHS:
+            raise KeyError(
+                f"路径配置缺失：{name}\n"
+                f"请在 config/paths.yaml 中配置该路径。参考 config/paths.yaml.example"
+            )
         raise KeyError(f"未知路径配置：{name}")
     return paths[name]

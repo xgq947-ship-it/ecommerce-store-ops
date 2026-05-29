@@ -23,7 +23,8 @@
 ```text
 运营自动化工具
   -> run.py
-  -> tasks/*
+  -> core/task_registry.py (扫描 tasks/ 下 task.yaml 动态加载)
+  -> tasks/* (每个任务目录含 task.yaml 声明文件)
   -> clients/ops_cli_client.py
   -> subprocess
   -> Ops-Cli
@@ -117,6 +118,7 @@ python3 run.py 聚水潭揽收监控 --notify
     ops_cli_client.py
   config/
     paths.yaml
+    paths.yaml.example
   core/
   tasks/
   skills/

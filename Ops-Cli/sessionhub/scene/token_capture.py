@@ -194,7 +194,11 @@ def _run_auto_actions(page: Any, actions: list[dict[str, Any]], target_url: str)
         action_type = str(action.get("type") or "").strip().lower()
         if action_type == "goto_target":
             current_url = getattr(page, "url", "") or ""
-            if current_url != target_url:
+            # Use prefix matching so SPA hash/query routing doesn't trigger a redundant navigation
+            target_base = target_url.rstrip("/").split("?")[0].split("#")[0]
+            current_base = current_url.split("?")[0].split("#")[0].rstrip("/")
+            already_there = current_base == target_base or current_base.startswith(target_base + "/")
+            if not already_there:
                 try:
                     page.goto(target_url, wait_until="domcontentloaded", timeout=10000)
                 except Exception:

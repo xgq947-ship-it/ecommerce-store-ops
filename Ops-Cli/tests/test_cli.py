@@ -29,7 +29,7 @@ def test_jst_profit_yesterday_json(monkeypatch) -> None:
             data={"date": "2026-05-15", "profit": 929.8, "metric_field": "经营利润"},
         )
 
-    monkeypatch.setattr("ops_cli.cli.run_jst_profit_yesterday", fake_run_yesterday_profit)
+    monkeypatch.setattr("ops_cli.platforms.jst.platform.run_yesterday_profit", fake_run_yesterday_profit)
 
     result = runner.invoke(app, ["--json", "jst", "profit", "yesterday"])
 
@@ -67,7 +67,7 @@ def test_tmcs_inventory_help() -> None:
 
 def test_tmcs_stock_query_json(monkeypatch) -> None:
     monkeypatch.setattr(
-        "ops_cli.cli.query_tmcs_stock",
+        "ops_cli.platforms.tmcs.platform.query_stock",
         lambda item_ids, warehouse_code: [
             {
                 "platform_item_id": "1052534376394",
@@ -122,7 +122,7 @@ def test_browser_check_json(monkeypatch) -> None:
 
 def test_jst_browser_learn_json(monkeypatch) -> None:
     monkeypatch.setattr(
-        "ops_cli.cli.learn_jst_browser_scene",
+        "ops_cli.platforms.jst.platform.learn_jst_browser_scene",
         lambda scene, timeout, cdp_url: CommandResponse(
             success=True,
             platform="jst",
@@ -141,7 +141,7 @@ def test_jst_shop_goods_import_json(monkeypatch, tmp_path) -> None:
     excel_path = tmp_path / "import.xlsx"
     excel_path.write_text("x", encoding="utf-8")
     monkeypatch.setattr(
-        "ops_cli.cli.import_jst_shop_goods",
+        "ops_cli.platforms.jst.platform.import_jst_shop_goods",
         lambda file_path, shop_name, mode: CommandResponse(
             success=True,
             platform="jst",
@@ -181,7 +181,7 @@ def test_tmcs_product_sync_json(monkeypatch) -> None:
             data={"new_rows": 3, "output_path": "/Users/dasheng/Desktop/电商Brain/02-运营店铺/主数据/猫超商品列表导出 (最新）.xlsx"},
         )
 
-    monkeypatch.setattr("ops_cli.cli.run_tmcs_product_sync", fake_run_tmcs_product_sync)
+    monkeypatch.setattr("ops_cli.platforms.tmcs.platform.run_product_sync", fake_run_tmcs_product_sync)
 
     result = runner.invoke(app, ["--json", "tmcs", "product", "sync", "--dry-run"])
 
@@ -199,7 +199,7 @@ def test_tmcs_product_learn_json(monkeypatch) -> None:
             data={"export_scene": "maochao_item_export", "next_command": "ops --json tmcs product sync"},
         )
 
-    monkeypatch.setattr("ops_cli.cli.learn_tmcs_product_sync", fake_learn_tmcs_product_sync)
+    monkeypatch.setattr("ops_cli.platforms.tmcs.platform.learn_product_sync", fake_learn_tmcs_product_sync)
 
     result = runner.invoke(app, ["--json", "tmcs", "product", "learn"])
 
@@ -221,7 +221,7 @@ def test_tmcs_inventory_export_json(monkeypatch) -> None:
             },
         )
 
-    monkeypatch.setattr("ops_cli.cli.run_tmcs_inventory_export", fake_run_tmcs_inventory_export)
+    monkeypatch.setattr("ops_cli.platforms.tmcs.platform.run_inventory_export", fake_run_tmcs_inventory_export)
 
     result = runner.invoke(app, ["--json", "tmcs", "inventory", "export", "--dry-run"])
 
@@ -242,7 +242,7 @@ def test_tmcs_inventory_learn_json(monkeypatch) -> None:
             },
         )
 
-    monkeypatch.setattr("ops_cli.cli.learn_tmcs_inventory_export", fake_learn_tmcs_inventory_export)
+    monkeypatch.setattr("ops_cli.platforms.tmcs.platform.learn_inventory_export", fake_learn_tmcs_inventory_export)
 
     result = runner.invoke(app, ["--json", "tmcs", "inventory", "learn"])
 
@@ -264,7 +264,7 @@ def test_tmcs_inventory_adjust_json(monkeypatch) -> None:
             },
         )
 
-    monkeypatch.setattr("ops_cli.cli.run_tmcs_inventory_adjust", fake_run_tmcs_inventory_adjust)
+    monkeypatch.setattr("ops_cli.platforms.tmcs.platform.run_inventory_adjust", fake_run_tmcs_inventory_adjust)
 
     result = runner.invoke(
         app,
@@ -285,7 +285,7 @@ def test_tmcs_inventory_adjust_learn_json(monkeypatch) -> None:
             data={"inventory_adjust_scene": "maochao_inventory_adjust"},
         )
 
-    monkeypatch.setattr("ops_cli.cli.learn_tmcs_inventory_adjust", fake_learn_tmcs_inventory_adjust)
+    monkeypatch.setattr("ops_cli.platforms.tmcs.platform.learn_inventory_adjust", fake_learn_tmcs_inventory_adjust)
 
     result = runner.invoke(app, ["--json", "tmcs", "inventory", "adjust-learn"])
 
@@ -311,7 +311,7 @@ def test_tmcs_bill_download_json(monkeypatch) -> None:
             data={"bill_count": 2, "downloaded_files": ["/Users/dasheng/Downloads/HDB1.xlsx"]},
         )
 
-    monkeypatch.setattr("ops_cli.cli.run_tmcs_bill_download", fake_run_tmcs_bill_download)
+    monkeypatch.setattr("ops_cli.platforms.tmcs.platform.run_bill_download", fake_run_tmcs_bill_download)
 
     result = runner.invoke(app, ["--json", "tmcs", "bill", "download", "--last-month"])
 
@@ -324,7 +324,7 @@ def test_tmcs_bill_failure_contains_structured_capability_error(monkeypatch: pyt
     def fail(**kwargs) -> CommandResponse:
         raise RuntimeError("未找到猫超账单下载模板")
 
-    monkeypatch.setattr("ops_cli.cli.run_tmcs_bill_download", fail)
+    monkeypatch.setattr("ops_cli.platforms.tmcs.platform.run_bill_download", fail)
 
     result = runner.invoke(app, ["--json", "tmcs", "bill", "download", "--dry-run"])
 
@@ -344,7 +344,7 @@ def test_auth_failure_is_not_misclassified_by_capture_hint(monkeypatch: pytest.M
             "业务命令会按需捕获对应 scene"
         )
 
-    monkeypatch.setattr("ops_cli.cli.tmcs_ensure_auth", fail)
+    monkeypatch.setattr("ops_cli.platforms.tmcs.platform.ensure_auth", fail)
 
     result = runner.invoke(app, ["--json", "--no-interactive-login", "tmcs", "auth", "ensure"])
 
@@ -361,7 +361,7 @@ def test_no_interactive_login_disables_recovery_policy(monkeypatch: pytest.Monke
         observed["allow_recovery"] = execution.allow_recovery
         return CommandResponse(success=True, platform="tmcs", command="bill download", data={})
 
-    monkeypatch.setattr("ops_cli.cli.run_tmcs_bill_download", fake_run_tmcs_bill_download)
+    monkeypatch.setattr("ops_cli.platforms.tmcs.platform.run_bill_download", fake_run_tmcs_bill_download)
 
     result = runner.invoke(app, ["--json", "--no-interactive-login", "tmcs", "bill", "download"])
 
@@ -378,7 +378,7 @@ def test_interactive_login_enables_recovery_policy(monkeypatch: pytest.MonkeyPat
         observed["allow_recovery"] = execution.allow_recovery
         return CommandResponse(success=True, platform="tmcs", command="bill download", data={})
 
-    monkeypatch.setattr("ops_cli.cli.run_tmcs_bill_download", fake_run_tmcs_bill_download)
+    monkeypatch.setattr("ops_cli.platforms.tmcs.platform.run_bill_download", fake_run_tmcs_bill_download)
 
     result = runner.invoke(app, ["--json", "--interactive-login", "tmcs", "bill", "download"])
 
@@ -395,7 +395,7 @@ def test_tmcs_bill_learn_json(monkeypatch) -> None:
             data={"statement_export_scene": "statement_bill_dynamic_list", "next_command": "ops --json tmcs bill download --last-month"},
         )
 
-    monkeypatch.setattr("ops_cli.cli.learn_tmcs_bill_download", fake_learn_tmcs_bill_download)
+    monkeypatch.setattr("ops_cli.platforms.tmcs.platform.learn_bill_download", fake_learn_tmcs_bill_download)
 
     result = runner.invoke(app, ["--json", "tmcs", "bill", "learn"])
 
@@ -421,7 +421,7 @@ def test_tmcs_promotion_bill_download_json(monkeypatch) -> None:
             data={"sources": [{"source": kwargs["source"]}], "downloaded_files": [], "failed": [], "dry_run": kwargs["dry_run"]},
         )
 
-    monkeypatch.setattr("ops_cli.cli.run_tmcs_promotion_bill_download", fake_run_tmcs_promotion_bill_download)
+    monkeypatch.setattr("ops_cli.platforms.tmcs.platform.run_promotion_bill_download", fake_run_tmcs_promotion_bill_download)
 
     result = runner.invoke(app, ["--json", "tmcs", "promotion-bill", "download", "--source", "zdx", "--last-month", "--dry-run"])
 
@@ -440,7 +440,7 @@ def test_tmcs_promotion_bill_learn_json(monkeypatch) -> None:
             data={"source": kwargs["source"], "template_path": "data/tmcs/promotion_bill_template.json"},
         )
 
-    monkeypatch.setattr("ops_cli.cli.learn_tmcs_promotion_bill", fake_learn_tmcs_promotion_bill)
+    monkeypatch.setattr("ops_cli.platforms.tmcs.platform.learn_promotion_bill", fake_learn_tmcs_promotion_bill)
 
     result = runner.invoke(app, ["--json", "tmcs", "promotion-bill", "learn", "--source", "all"])
 
@@ -463,7 +463,7 @@ def test_jst_order_label_json(monkeypatch) -> None:
             },
         )
 
-    monkeypatch.setattr("ops_cli.cli.run_jst_order_label", fake_run_order_label)
+    monkeypatch.setattr("ops_cli.platforms.jst.platform.run_order_label", fake_run_order_label)
 
     result = runner.invoke(app, ["--json", "jst", "order", "label", "--order-id", "123456"])
 
@@ -477,7 +477,7 @@ def test_jst_order_label_json_error(monkeypatch) -> None:
     def fake_run_order_label(**kwargs) -> CommandResponse:
         raise RuntimeError("缺少 JST_COOKIE")
 
-    monkeypatch.setattr("ops_cli.cli.run_jst_order_label", fake_run_order_label)
+    monkeypatch.setattr("ops_cli.platforms.jst.platform.run_order_label", fake_run_order_label)
 
     result = runner.invoke(app, ["--json", "jst", "order", "label", "--order-id", "123456"])
 
@@ -499,7 +499,7 @@ def test_jst_order_remark_json(monkeypatch) -> None:
             },
         )
 
-    monkeypatch.setattr("ops_cli.cli.run_jst_order_remark", fake_run_order_remark)
+    monkeypatch.setattr("ops_cli.platforms.jst.platform.run_order_remark", fake_run_order_remark)
 
     result = runner.invoke(
         app,
@@ -537,7 +537,7 @@ def test_jst_order_logistics_json(monkeypatch) -> None:
             },
         )
 
-    monkeypatch.setattr("ops_cli.cli.run_jst_order_logistics", fake_run_order_logistics)
+    monkeypatch.setattr("ops_cli.platforms.jst.platform.run_order_logistics", fake_run_order_logistics)
 
     result = runner.invoke(app, ["--json", "jst", "order", "logistics", "--outer-order-id", "TB123"])
 
@@ -570,7 +570,7 @@ def test_jst_order_logistics_batch_json(monkeypatch, tmp_path) -> None:
             },
         )
 
-    monkeypatch.setattr("ops_cli.cli.run_jst_order_logistics", fake_run_order_logistics)
+    monkeypatch.setattr("ops_cli.platforms.jst.platform.run_order_logistics", fake_run_order_logistics)
 
     result = runner.invoke(
         app,
@@ -611,7 +611,7 @@ def test_jst_order_logistics_learn_json(monkeypatch) -> None:
             },
         )
 
-    monkeypatch.setattr("ops_cli.cli.learn_jst_order_logistics", fake_learn_order_logistics)
+    monkeypatch.setattr("ops_cli.platforms.jst.platform.learn_order_logistics", fake_learn_order_logistics)
 
     result = runner.invoke(app, ["--json", "jst", "order", "logistics", "learn", "--outer-order-id", "TB123"])
 
@@ -648,7 +648,7 @@ def test_jst_order_invoice_json(monkeypatch) -> None:
             },
         )
 
-    monkeypatch.setattr("ops_cli.cli.run_jst_order_invoice_workorder", fake_run_order_invoice_workorder)
+    monkeypatch.setattr("ops_cli.platforms.jst.platform.run_order_invoice_workorder", fake_run_order_invoice_workorder)
 
     result = runner.invoke(
         app,
@@ -696,7 +696,7 @@ def test_jst_order_invoice_learn_json(monkeypatch) -> None:
             },
         )
 
-    monkeypatch.setattr("ops_cli.cli.learn_jst_order_invoice_workorder", fake_learn_order_invoice_workorder)
+    monkeypatch.setattr("ops_cli.platforms.jst.platform.learn_order_invoice_workorder", fake_learn_order_invoice_workorder)
 
     result = runner.invoke(app, ["--json", "jst", "order", "invoice", "learn"])
 
@@ -720,7 +720,7 @@ def test_jst_auth_check_json(monkeypatch) -> None:
             },
         )
 
-    monkeypatch.setattr("ops_cli.cli.jst_check_auth", fake_check_auth)
+    monkeypatch.setattr("ops_cli.platforms.jst.platform.check_auth", fake_check_auth)
 
     result = runner.invoke(app, ["--json", "jst", "auth", "check"])
 
@@ -744,7 +744,7 @@ def test_jst_auth_ensure_json(monkeypatch) -> None:
             },
         )
 
-    monkeypatch.setattr("ops_cli.cli.jst_ensure_auth", fake_ensure_auth)
+    monkeypatch.setattr("ops_cli.platforms.jst.platform.ensure_auth", fake_ensure_auth)
 
     result = runner.invoke(app, ["--json", "jst", "auth", "ensure"])
 
@@ -768,7 +768,7 @@ def test_jst_auth_capture_json(monkeypatch) -> None:
             },
         )
 
-    monkeypatch.setattr("ops_cli.cli.jst_capture_auth", fake_capture_auth)
+    monkeypatch.setattr("ops_cli.platforms.jst.platform.capture_auth", fake_capture_auth)
 
     result = runner.invoke(app, ["--json", "jst", "auth", "capture"])
 
@@ -792,7 +792,7 @@ def test_tmcs_auth_check_json(monkeypatch) -> None:
             },
         )
 
-    monkeypatch.setattr("ops_cli.cli.tmcs_check_auth", fake_tmcs_check_auth)
+    monkeypatch.setattr("ops_cli.platforms.tmcs.platform.check_auth", fake_tmcs_check_auth)
 
     result = runner.invoke(app, ["--json", "tmcs", "auth", "check"])
 
@@ -824,7 +824,7 @@ def test_jst_order_stats_json(monkeypatch) -> None:
             },
         )
 
-    monkeypatch.setattr("ops_cli.cli.run_jst_order_stats", fake_run_order_stats)
+    monkeypatch.setattr("ops_cli.platforms.jst.platform.run_order_stats", fake_run_order_stats)
 
     result = runner.invoke(app, ["--json", "jst", "order", "stats"])
 
@@ -846,7 +846,7 @@ def test_jst_order_stats_learn_json(monkeypatch) -> None:
             },
         )
 
-    monkeypatch.setattr("ops_cli.cli.learn_jst_order_stats", fake_learn_order_stats)
+    monkeypatch.setattr("ops_cli.platforms.jst.platform.learn_order_stats", fake_learn_order_stats)
 
     result = runner.invoke(app, ["--json", "jst", "order", "stats", "learn"])
 
@@ -859,7 +859,7 @@ def test_jst_order_stats_json_error(monkeypatch) -> None:
     def fake_run_order_stats(**kwargs) -> CommandResponse:
         raise RuntimeError("未找到订单统计模板")
 
-    monkeypatch.setattr("ops_cli.cli.run_jst_order_stats", fake_run_order_stats)
+    monkeypatch.setattr("ops_cli.platforms.jst.platform.run_order_stats", fake_run_order_stats)
 
     result = runner.invoke(app, ["--json", "jst", "order", "stats"])
 
@@ -892,7 +892,7 @@ def test_jst_product_sync_json(monkeypatch) -> None:
             },
         )
 
-    monkeypatch.setattr("ops_cli.cli.run_jst_product_sync", fake_run_product_sync)
+    monkeypatch.setattr("ops_cli.platforms.jst.platform.run_product_sync", fake_run_product_sync)
 
     result = runner.invoke(app, ["--json", "jst", "product", "sync"])
 
@@ -916,7 +916,7 @@ def test_jst_product_sync_dry_run_json(monkeypatch) -> None:
             },
         )
 
-    monkeypatch.setattr("ops_cli.cli.run_jst_product_sync", fake_run_product_sync)
+    monkeypatch.setattr("ops_cli.platforms.jst.platform.run_product_sync", fake_run_product_sync)
 
     result = runner.invoke(app, ["--json", "jst", "product", "sync", "--dry-run"])
 
@@ -936,7 +936,7 @@ def test_jst_product_sync_keep_brands_multi_args(monkeypatch) -> None:
             data={"keep_brands": kwargs["keep_brands"]},
         )
 
-    monkeypatch.setattr("ops_cli.cli.run_jst_product_sync", fake_run_product_sync)
+    monkeypatch.setattr("ops_cli.platforms.jst.platform.run_product_sync", fake_run_product_sync)
 
     result = runner.invoke(app, ["--json", "jst", "product", "sync", "--keep-brands", "奥克斯", "苏泊尔"])
 
@@ -957,7 +957,7 @@ def test_jst_product_learn_json(monkeypatch) -> None:
             },
         )
 
-    monkeypatch.setattr("ops_cli.cli.learn_jst_product_sync", fake_learn_product_sync)
+    monkeypatch.setattr("ops_cli.platforms.jst.platform.learn_jst_product_sync", fake_learn_product_sync)
 
     result = runner.invoke(app, ["--json", "jst", "product", "learn"])
 
@@ -970,7 +970,7 @@ def test_jst_product_sync_json_error(monkeypatch) -> None:
     def fake_run_product_sync(**kwargs) -> CommandResponse:
         raise RuntimeError("未找到商品同步模板")
 
-    monkeypatch.setattr("ops_cli.cli.run_jst_product_sync", fake_run_product_sync)
+    monkeypatch.setattr("ops_cli.platforms.jst.platform.run_product_sync", fake_run_product_sync)
 
     result = runner.invoke(app, ["--json", "jst", "product", "sync"])
 
@@ -1002,7 +1002,7 @@ def test_jst_profit_yesterday_real_json(monkeypatch) -> None:
             },
         )
 
-    monkeypatch.setattr("ops_cli.cli.run_jst_profit_yesterday", fake_run_yesterday_profit)
+    monkeypatch.setattr("ops_cli.platforms.jst.platform.run_yesterday_profit", fake_run_yesterday_profit)
 
     result = runner.invoke(app, ["--json", "jst", "profit", "yesterday"])
 
@@ -1025,7 +1025,7 @@ def test_jst_profit_learn_json(monkeypatch) -> None:
             },
         )
 
-    monkeypatch.setattr("ops_cli.cli.learn_jst_profit_scene", fake_learn_profit)
+    monkeypatch.setattr("ops_cli.platforms.jst.platform.learn_jst_profit_scene", fake_learn_profit)
 
     result = runner.invoke(app, ["--json", "jst", "profit", "learn"])
 
@@ -1038,7 +1038,7 @@ def test_jst_profit_yesterday_json_error(monkeypatch) -> None:
     def fake_run_yesterday_profit(**kwargs) -> CommandResponse:
         raise RuntimeError("未找到利润统计模板")
 
-    monkeypatch.setattr("ops_cli.cli.run_jst_profit_yesterday", fake_run_yesterday_profit)
+    monkeypatch.setattr("ops_cli.platforms.jst.platform.run_yesterday_profit", fake_run_yesterday_profit)
 
     result = runner.invoke(app, ["--json", "jst", "profit", "yesterday"])
 

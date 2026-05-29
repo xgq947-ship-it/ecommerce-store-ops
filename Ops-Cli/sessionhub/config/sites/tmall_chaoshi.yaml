@@ -63,18 +63,15 @@ scenes:
     force_refresh_before_run: true
     manual_login_when_failed: true
   tmcs_promotion_wxt_bill_export:
-    target_url: "https://web.txcs.tmall.com/"
+    target_url: "https://one.alimama.com/index.html#!/account/detail"
     match_url_contains:
-      - wxt
+      - exportAccountJournal
     method: POST
     auto_actions:
       - type: goto_target
       - type: click_any_text
         texts:
-          - "查询"
-          - "搜索"
-      - type: click_any_text
-        texts:
+          - "下载数据"
           - "导出"
           - "导出列表"
           - "下载"

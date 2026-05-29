@@ -1,0 +1,48 @@
+# 个人路径配置模板
+# 复制此文件为 paths.yaml 并根据本机环境调整路径值
+# 项目相对路径（runtime_dir, logs_dir 等）已自动计算，无需在此配置
+
+# 桌面和下载目录
+desktop_dir: ~/Desktop
+downloads_dir: ~/Downloads
+
+# 电商Brain 工作区
+ecommerce_brain_dir: ~/Desktop/电商Brain
+product_library_dir: ~/Desktop/电商Brain/01-产品库
+
+# 公司费用报销目录
+reimbursement_dir: ~/Desktop/公司费用报销
+brush_register_dir: ~/Desktop/公司费用报销
+backup_dir: ~/Desktop/公司费用报销/备份
+brush_orders_dir: ~/Desktop/公司费用报销/今日刷单表格
+brush_product_file: ~/Desktop/公司费用报销/今日刷单产品表.xlsx
+
+# 微信文件目录
+wechat_file_dir: ~/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/wxid_qkre05gkwlkd21_e73b/msg/file
+
+# 聚水潭商品资料文件
+jst_product_file: ~/Desktop/电商Brain/02-运营店铺/主数据/聚水潭商品资料（最新）.xlsx
+jst_product_master_file: ~/Desktop/电商Brain/02-运营店铺/主数据/聚水潭商品资料（最新）.xlsx
+jst_product_import_file: ~/Downloads/聚水潭商品资料（最新）.xlsx
+
+# 猫超/天猫商品资料文件
+maochao_goods_master_file: ~/Desktop/电商Brain/02-运营店铺/主数据/猫超商品列表导出 (最新）.xlsx
+tmall_goods_master_file: ~/Desktop/电商Brain/02-运营店铺/主数据/猫超商品列表导出 (最新）.xlsx
+
+# 猫超账单工作目录
+maochao_monthly_bill_dir: ~/Desktop
+maochao_work_dir: ~/Desktop
+
+# 天猫下载目录
+tmall_bill_download_dir: ~/Downloads
+tmall_hdb_glob: ~/Downloads/HDB*.xlsx
+tmall_statement_list_file: ~/Downloads/对账单列表.xlsx
+tmall_goods_import_file: ~/Downloads/猫超商品列表导出.xlsx
+
+# 买家秀输出目录
+buyer_show_output_dir: ~/Desktop
+
+# 公司 NAS 挂载路径
+company_nas_mount: /Volumes/suolong.synology.me
+company_nas_product_root: /Volumes/suolong.synology.me/产品资料（运营）/1.产品资料
+nas_product_library_dir: ~/Desktop/电商Brain/01-产品库

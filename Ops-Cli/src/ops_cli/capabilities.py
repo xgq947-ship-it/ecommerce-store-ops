@@ -52,69 +52,17 @@ class CapabilityExecution:
     recovery: SessionRecoveryState
 
 
-def _spec(
-    identifier: str,
-    platform: str,
-    command: str,
-    *,
-    scenes: tuple[str, ...] = (),
-    recovery_policy: str = "interactive_if_tty",
-    artifact_types: tuple[str, ...] = (),
-) -> CapabilitySpec:
-    return CapabilitySpec(
-        id=identifier,
-        platform=platform,
-        command=command,
-        scenes=scenes,
-        recovery_policy=recovery_policy,
-        artifact_types=artifact_types,
-    )
-
-
-_CAPABILITIES = {
-    spec.id: spec
-    for spec in (
-        _spec("browser.check", "browser", "check", recovery_policy="never"),
-        _spec("jst.auth.check", "jst", "auth check", scenes=("order_list",), recovery_policy="never"),
-        _spec("jst.auth.ensure", "jst", "auth ensure", scenes=("order_list",)),
-        _spec("jst.auth.capture", "jst", "auth capture", scenes=("order_list",), recovery_policy="explicit"),
-        _spec("jst.profit.yesterday", "jst", "profit yesterday", scenes=("business_profit_multi_dimension_report",)),
-        _spec("jst.profit.learn", "jst", "profit learn", scenes=("business_profit_multi_dimension_report",), recovery_policy="explicit"),
-        _spec("jst.profit.month", "jst", "profit month", scenes=("business_profit_multi_dimension_report",)),
-        _spec("jst.product.sync", "jst", "product sync", scenes=("product_export",), artifact_types=("xlsx",)),
-        _spec("jst.product.learn", "jst", "product learn", scenes=("product_export",), recovery_policy="explicit"),
-        _spec("jst.browser.learn", "jst", "browser learn", recovery_policy="explicit"),
-        _spec("jst.shop-goods.import", "jst", "shop-goods import", scenes=("order_list",), artifact_types=("xlsx",)),
-        _spec("jst.order.label", "jst", "order label", scenes=("order_list",)),
-        _spec("jst.order.remark", "jst", "order remark", scenes=("order_list",)),
-        _spec("jst.order.logistics", "jst", "order logistics", scenes=("order_list", "order_logistics_trace")),
-        _spec("jst.order.logistics.learn", "jst", "order logistics learn", scenes=("order_list", "order_logistics_trace"), recovery_policy="explicit"),
-        _spec("jst.order.pickup-watch", "jst", "order pickup-watch", scenes=("order_list", "order_logistics_trace")),
-        _spec("jst.order.invoice", "jst", "order invoice", scenes=("order_list", "order_invoice_workorder")),
-        _spec("jst.order.invoice.learn", "jst", "order invoice learn", scenes=("order_list", "order_invoice_workorder"), recovery_policy="explicit"),
-        _spec("jst.order.reimburse", "jst", "order reimburse", scenes=("order_list",), artifact_types=("xlsx",)),
-        _spec("jst.order.stats", "jst", "order stats", scenes=("profit_multi_dimension_report",)),
-        _spec("jst.order.stats.learn", "jst", "order stats learn", scenes=("profit_multi_dimension_report",), recovery_policy="explicit"),
-        _spec("tmcs.auth.check", "tmcs", "auth check", scenes=("maochao_item_search",), recovery_policy="never"),
-        _spec("tmcs.auth.ensure", "tmcs", "auth ensure", scenes=("maochao_item_search",)),
-        _spec("tmcs.auth.capture", "tmcs", "auth capture", scenes=("maochao_item_search",), recovery_policy="explicit"),
-        _spec("tmcs.product.list", "tmcs", "product list", recovery_policy="never"),
-        _spec("tmcs.product.sync", "tmcs", "product sync", scenes=("maochao_item_search", "maochao_item_export"), artifact_types=("xlsx",)),
-        _spec("tmcs.product.learn", "tmcs", "product learn", scenes=("maochao_item_search", "maochao_item_export"), recovery_policy="explicit"),
-        _spec("tmcs.inventory.export", "tmcs", "inventory export", scenes=("maochao_inventory_search", "maochao_inventory_export"), artifact_types=("xlsx",)),
-        _spec("tmcs.inventory.learn", "tmcs", "inventory learn", scenes=("maochao_inventory_search", "maochao_inventory_export"), recovery_policy="explicit"),
-        _spec("tmcs.inventory.adjust", "tmcs", "inventory adjust", scenes=("maochao_inventory_search",)),
-        _spec("tmcs.inventory.adjust-learn", "tmcs", "inventory adjust-learn", scenes=("maochao_inventory_search",), recovery_policy="explicit"),
-        _spec("tmcs.stock.query", "tmcs", "stock query", scenes=("maochao_inventory_search",)),
-        _spec("tmcs.bill.download", "tmcs", "bill download", scenes=("statement_bill_list_for_supplier", "statement_bill_dynamic_list", "download_file_query"), artifact_types=("xlsx",)),
-        _spec("tmcs.bill.learn", "tmcs", "bill learn", scenes=("statement_bill_list_for_supplier", "statement_bill_dynamic_list", "download_file_query"), recovery_policy="explicit"),
-        _spec("tmcs.promotion-bill.download", "tmcs", "promotion-bill download", scenes=("tmcs_promotion_zdx_bill_export", "tmcs_promotion_wxt_bill_export", "download_file_query"), artifact_types=("xlsx", "csv")),
-        _spec("tmcs.promotion-bill.learn", "tmcs", "promotion-bill learn", scenes=("tmcs_promotion_zdx_bill_export", "tmcs_promotion_wxt_bill_export", "download_file_query"), recovery_policy="explicit"),
-        _spec("tmcs.listing.create", "tmcs", "listing create"),
-    )
-}
-_COMMAND_INDEX = {(spec.platform, spec.command): spec for spec in _CAPABILITIES.values()}
+# Dynamic registries — populated by register_capabilities() during platform discovery
+_CAPABILITIES: dict[str, CapabilitySpec] = {}
+_COMMAND_INDEX: dict[tuple[str, str], CapabilitySpec] = {}
 _CURRENT_EXECUTION: ContextVar[CapabilityExecution | None] = ContextVar("ops_capability_execution", default=None)
+
+
+def register_capabilities(specs: list[CapabilitySpec]) -> None:
+    """Register a list of CapabilitySpec instances into the global registries."""
+    for spec in specs:
+        _CAPABILITIES[spec.id] = spec
+        _COMMAND_INDEX[(spec.platform, spec.command)] = spec
 
 
 def capability_ids() -> set[str]:

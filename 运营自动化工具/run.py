@@ -13,26 +13,11 @@ from pathlib import Path
 
 from core.config_loader import get_path
 from core.task_context import TaskContext
-from core.task_registry import resolve_task, task_scripts
+from core.task_registry import resolve_task, task_required_modules, task_scripts
 
 
 ROOT = Path(__file__).resolve().parent
 LOG_DIR = get_path("logs_dir")
-BUNDLED_PYTHON = Path("/Users/dasheng/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3")
-
-TASK_REQUIRED_MODULES = {
-    "append_brush_orders": ("openpyxl",),
-    "tag_jst_brush_orders": (),
-    "jst_brush_reimburse_workorder": ("requests", "openpyxl"),
-    "company_nas_listing": ("openpyxl",),
-    "company_nas_index": ("openpyxl",),
-    "buyer_show": ("openpyxl", "PIL"),
-    "update_jst_products": (),
-    "update_maochao_goods": ("openpyxl",),
-    "tmcs_sync_jst_shop_goods": ("openpyxl",),
-    "jst_pickup_watch": (),
-    "process_maochao_bills": ("openpyxl",),
-}
 
 TASKS = task_scripts()
 
@@ -81,7 +66,6 @@ def python_has_modules(python_path: Path, modules: tuple[str, ...]) -> bool:
 
 def python_candidates() -> list[Path]:
     candidates = [
-        BUNDLED_PYTHON,
         Path(sys.executable),
         Path("/usr/bin/python3"),
         Path("/usr/local/bin/python3"),
@@ -99,7 +83,7 @@ def python_candidates() -> list[Path]:
 
 
 def choose_python(task_name: str) -> str:
-    required_modules = TASK_REQUIRED_MODULES.get(task_name, ())
+    required_modules = task_required_modules().get(task_name, ())
     for candidate in python_candidates():
         if python_has_modules(candidate, required_modules):
             return str(candidate)

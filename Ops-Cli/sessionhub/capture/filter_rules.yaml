@@ -3,6 +3,7 @@ allowed_domains:
   - jushuitan.com
   - tmall.com
   - taobao.com
+  - alimama.com
 
 blocked_resource_types:
   - image

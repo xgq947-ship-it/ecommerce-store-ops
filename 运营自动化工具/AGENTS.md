@@ -17,11 +17,11 @@
 当前核心层：
 
 - `run.py`：唯一统一任务入口，只做任务解析、调度、Python 环境选择、日志和 `runtime/context` 记录。
-- `core/task_registry.py`：唯一任务注册和触发词来源。
+- `core/task_registry.py`：任务注册和触发词来源，通过扫描 `tasks/` 下的 `task.yaml` 动态加载。
 - `tasks/`：业务任务目录，负责具体流程、参数解析、dry-run、业务日志和输出。
 - `clients/`：只保留业务侧到 `Ops-Cli` 的桥接。
 - `Ops-Cli/sessionhub/`：统一登录态中心、9222 Chrome 会话入口、动态请求捕获入口，不放业务逻辑。
-- `Ops-Cli/src/ops_cli/capabilities.py` 与 `execution.py`：统一能力注册、交互登录策略、JSON 输出和错误分类入口。
+- `Ops-Cli/src/ops_cli/capabilities.py` 与 `execution.py`：统一能力注册（各平台通过 `platform.py` 的 `register()` 动态注册）、交互登录策略、JSON 输出和错误分类入口。
 - `runtime/context/`：任务运行上下文记录，用于追踪输入、输出、产物、错误和下游任务。
 - `runtime/retry/`：可重放失败项，不替代失败 Excel、业务日志或人工验收。
 - `logs/`：任务执行日志。
@@ -95,7 +95,7 @@ SessionHub 不做：
 
 ## tasks 规则
 
-新增长期业务必须放到 `tasks/`，再注册到 `core/task_registry.py`。
+新增长期业务必须放到 `tasks/`，并创建对应的 `task.yaml` 声明文件（自动注册，无需手动修改 `task_registry.py`）。
 
 任务应遵守：
 
@@ -106,7 +106,7 @@ SessionHub 不做：
 - 不直接导入 SessionHub 内部实现。
 - 需要运行追踪时写 `TaskContext`。
 - 有可重放失败项时写 `runtime/retry/`。
-- 长期路径和业务数据源路径必须写入 `config/paths.yaml`，通过 `core.config_loader.get_path()` 读取；任务内不要新增硬编码绝对路径。
+- 长期路径和业务数据源路径必须写入 `config/paths.yaml`，通过 `core.config_loader.get_path()` 读取；任务内不要新增硬编码绝对路径。项目相对路径（runtime_dir、logs_dir 等）已内置在 `DEFAULT_PATHS` 中，个人路径（桌面、下载、微信文件等）需在 `config/paths.yaml` 中配置，缺失时会提示参考 `config/paths.yaml.example`。
 
 ## clients 规则
 
@@ -153,7 +153,7 @@ context 应尽量包含：
 2. 在 `Ops-Cli/sessionhub` 中沉淀或更新 scene。
 3. 在 `Ops-Cli` 中封装可复用平台命令。
 4. 在 `tasks/` 实现业务编排。
-5. 在 `core/task_registry.py` 注册任务和触发词。
+5. 在任务目录创建 `task.yaml` 声明 name、aliases、fuzzy_keywords、required_modules、entrypoint（自动注册，无需手动修改 `task_registry.py`）。
 6. 用 `run.py` 验证入口、dry-run、日志和 context。
 7. 必要时同步 `README.md`、项目 `SKILL.md` 和全局 skill。
 

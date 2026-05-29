@@ -58,8 +58,8 @@ SOURCE_CONFIGS = {
         "scene": "tmcs_promotion_wxt_bill_export",
         "filename": "万象台推广账单",
         "default_extension": ".csv",
-        "download_keywords": ("万象台", "wxt", "adbrain"),
-        "probe_keywords": ("万象台", "wanxiangtai", "wxt", "adbrain"),
+        "download_keywords": ("万象台", "wxt", "adbrain", "exportAccountJournal"),
+        "probe_keywords": ("万象台", "wanxiangtai", "wxt", "adbrain", "alimama", "exportAccountJournal"),
     },
 }
 
@@ -225,6 +225,33 @@ def _source_file_path(output_dir: Path, source: str, start: date, suffix: str | 
     extension = suffix or str(SOURCE_CONFIGS[source].get("default_extension") or ".xlsx")
     filename = f"{SOURCE_CONFIGS[source]['filename']}_{start.strftime('%Y-%m')}{extension}"
     return unique_path(output_dir / filename)
+
+
+def _existing_source_file(output_dir: Path, source: str, start: date) -> Path | None:
+    month_tag = start.strftime("%Y-%m")
+    names = [SOURCE_CONFIGS[source]["filename"]]
+    if source == "wxt":
+        names.append("万相台推广账单")
+    suffixes = (".xlsx", ".xls", ".csv")
+    candidates: list[Path] = []
+    for name in names:
+        for suffix in suffixes:
+            candidates.extend(output_dir.glob(f"{name}_{month_tag}*{suffix}"))
+    aliases = SOURCE_CONFIGS[source]["download_keywords"]
+    directory_entries = output_dir.iterdir() if output_dir.exists() else []
+    for path in directory_entries:
+        if not path.is_file() or path.name.startswith("~$"):
+            continue
+        if path.suffix.lower() not in suffixes:
+            continue
+        if month_tag not in path.name:
+            continue
+        if any(keyword and keyword in path.name for keyword in aliases):
+            candidates.append(path)
+    unique = {path.resolve(): None for path in candidates if path.exists() and path.is_file()}
+    if not unique:
+        return None
+    return sorted(unique, key=lambda item: item.stat().st_mtime, reverse=True)[0]
 
 
 def _scene_to_template(scene: dict[str, Any]) -> dict[str, Any]:
@@ -544,9 +571,13 @@ def run_promotion_bill_download(
             template_warning = str(exc)
             template = {"defaults": {"output_dir": get_config().tmcs_bill_download_dir}, "sources": {}, "download_query": {}}
         output_dir = Path(str((template.get("defaults") or {}).get("output_dir") or get_config().tmcs_bill_download_dir)).expanduser()
+        existing_files = {item: _existing_source_file(output_dir, item, begin) for item in selected}
         scene_status: list[dict[str, Any]] = []
         for item in selected:
             scene_name = SOURCE_CONFIGS[item]["scene"]
+            if existing_files.get(item) is not None:
+                scene_status.append({"source": item, "scene": scene_name, "status": "existing_file", "path": str(existing_files[item])})
+                continue
             try:
                 check = check_scene_or_fail(TMCS_SITE, scene_name, next_command="ops tmcs promotion-bill learn --source all")
                 scene_status.append({"source": item, "scene": scene_name, "status": check.get("status", "valid")})
@@ -591,21 +622,26 @@ def run_promotion_bill_download(
     retried_for_auth = False
     auth_refresh_applied = False
     while True:
-        template = _load_template()
+        template = _load_template(allow_refresh=False)
         output_dir = Path(str((template.get("defaults") or {}).get("output_dir") or get_config().tmcs_bill_download_dir)).expanduser()
+        existing_files = {item: _existing_source_file(output_dir, item, begin) for item in selected}
         template_sources = template.get("sources") or {}
-        missing = [item for item in selected if item not in template_sources]
+        missing = [item for item in selected if item not in template_sources and existing_files.get(item) is None]
         if missing:
             learn_promotion_bill(source=SOURCE_ALL if len(missing) > 1 else missing[0], force=False)
             template = _load_template()
             template_sources = template.get("sources") or {}
-            missing = [item for item in selected if item not in template_sources]
+            existing_files = {item: _existing_source_file(output_dir, item, begin) for item in selected}
+            missing = [item for item in selected if item not in template_sources and existing_files.get(item) is None]
             if missing:
                 raise RuntimeError(f"推广账单模板缺少来源：{','.join(missing)}。请先运行 `ops tmcs promotion-bill learn --source all`。")
 
         scene_status: list[dict[str, Any]] = []
         for item in selected:
             scene_name = SOURCE_CONFIGS[item]["scene"]
+            if existing_files.get(item) is not None:
+                scene_status.append({"source": item, "scene": scene_name, "status": "existing_file", "path": str(existing_files[item])})
+                continue
             try:
                 check = check_scene_or_fail(TMCS_SITE, scene_name, next_command="ops tmcs promotion-bill learn --source all")
                 scene_status.append({"source": item, "scene": scene_name, "status": check.get("status", "valid")})
@@ -631,6 +667,10 @@ def run_promotion_bill_download(
         downloaded_files: list[str] = []
         failed: list[dict[str, str]] = []
         for item in selected:
+            existing_path = existing_files.get(item)
+            if existing_path is not None:
+                downloaded_files.append(str(existing_path))
+                continue
             try:
                 path = _download_source(
                     source=item,

@@ -31,7 +31,7 @@ description: Use when the user mentions recurring local ecommerce operations in 
 ## 新任务规则
 
 1. 新任务先放 `tasks/`
-2. 在 `core/task_registry.py` 注册任务名与 aliases
+2. 在任务目录创建 `task.yaml` 声明任务名、aliases、fuzzy_keywords、required_modules、entrypoint（自动注册）
 3. 优先接 `run.py`
 4. 平台动作统一放到 `Ops-Cli`
 5. 业务层通过 `clients/ops_cli_client.py` 调 `ops --json ...`
