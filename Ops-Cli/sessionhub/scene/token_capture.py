@@ -164,7 +164,7 @@ def _is_login_page(current_url: str, login_url: str) -> bool:
     return "/login" in text or "login?" in text
 
 
-def _click_by_text(page: Any, text: str) -> bool:
+def _click_by_text(page: Any, text: str, *, wait_ms: int = 0) -> bool:
     candidates = [
         page.get_by_role("button", name=text, exact=True),
         page.get_by_role("button", name=text),
@@ -173,7 +173,11 @@ def _click_by_text(page: Any, text: str) -> bool:
     for locator in candidates:
         try:
             target = locator.first
-            if target.count() <= 0:
+            if wait_ms > 0:
+                # SPA pages render controls asynchronously; wait for the element
+                # to appear instead of giving up on the first synchronous check.
+                target.wait_for(state="visible", timeout=wait_ms)
+            elif target.count() <= 0:
                 continue
             target.click(timeout=2000)
             return True
@@ -182,14 +186,24 @@ def _click_by_text(page: Any, text: str) -> bool:
     return False
 
 
-def _click_any_text(page: Any, texts: list[str]) -> bool:
+def _click_any_text(page: Any, texts: list[str], *, wait_ms: int = 0) -> bool:
+    # First pass: cheap synchronous probe so an already-rendered control is
+    # clicked immediately without paying the per-text wait timeout.
     for text in texts:
         if _click_by_text(page, text):
+            return True
+    if wait_ms <= 0:
+        return False
+    # Second pass: wait for late-rendering controls (SPA), sharing the budget
+    # across candidates so a single slow text does not consume the whole window.
+    per_text_wait = max(int(wait_ms / max(len(texts), 1)), 500)
+    for text in texts:
+        if _click_by_text(page, text, wait_ms=per_text_wait):
             return True
     return False
 
 
-def _run_auto_actions(page: Any, actions: list[dict[str, Any]], target_url: str) -> None:
+def _run_auto_actions(page: Any, actions: list[dict[str, Any]], target_url: str, *, click_wait_ms: int = 0) -> None:
     for action in actions:
         action_type = str(action.get("type") or "").strip().lower()
         if action_type == "goto_target":
@@ -212,12 +226,12 @@ def _run_auto_actions(page: Any, actions: list[dict[str, Any]], target_url: str)
             text = str(action.get("text") or "").strip()
             if not text:
                 continue
-            _click_by_text(page, text)
+            _click_by_text(page, text, wait_ms=click_wait_ms)
         elif action_type == "click_any_text":
             texts = [str(text).strip() for text in action.get("texts") or [] if str(text).strip()]
             if not texts:
                 continue
-            _click_any_text(page, texts)
+            _click_any_text(page, texts, wait_ms=click_wait_ms)
 
 
 def capture_session(site: str, scene: str, wait_seconds: int = 90) -> dict[str, Any]:
@@ -237,6 +251,10 @@ def capture_session(site: str, scene: str, wait_seconds: int = 90) -> dict[str, 
     auto_actions = list(scene_config.get("auto_actions") or [])
     effective_wait_seconds = int(scene_config.get("wait_seconds") or wait_seconds)
     capture_retry_limit = max(int(scene_config.get("capture_retry_limit") or 1), 1)
+    # Seconds between auto-action retries; SPA scenes can lower this to poll faster.
+    action_interval = max(float(scene_config.get("action_interval_seconds") or 5.0), 0.5)
+    # When >0, clicks wait for late-rendering controls (SPA) instead of probing once.
+    click_wait_ms = max(int(scene_config.get("click_wait_ms") or 0), 0)
     login_url = str(config.get("login_url") or "")
     captured: dict[str, Any] | None = None
 
@@ -304,9 +322,9 @@ def capture_session(site: str, scene: str, wait_seconds: int = 90) -> dict[str, 
                     and time.monotonic() >= next_action_at
                     and not _is_login_page(current_url, login_url)
                 ):
-                    _run_auto_actions(page, auto_actions, target_url)
+                    _run_auto_actions(page, auto_actions, target_url, click_wait_ms=click_wait_ms)
                     action_attempts += 1
-                    next_action_at = time.monotonic() + 5.0
+                    next_action_at = time.monotonic() + action_interval
                 page.wait_for_timeout(500)
         except PlaywrightError as exc:
             logging.exception("捕获过程中 Chrome 页面或 CDP 连接断开")

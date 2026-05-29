@@ -75,6 +75,12 @@ scenes:
           - "导出"
           - "导出列表"
           - "下载"
+    # 万相台是 alimama React SPA，且常需手动登录：放宽监听窗口、加密重试节奏，
+    # 并让点击等待异步渲染出来的「下载数据」按钮后再触发导出请求。
+    wait_seconds: 150
+    capture_retry_limit: 40
+    action_interval_seconds: 3
+    click_wait_ms: 2500
     cache_minutes: 30
     force_refresh_before_run: true
     manual_login_when_failed: true
