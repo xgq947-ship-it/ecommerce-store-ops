@@ -33,6 +33,8 @@
 Codex 插件只能绑定主浏览器；SessionHub 使用 9222 专用浏览器。两者职责必须分开。
 
 - 主浏览器是日常 Chrome，绑定 Codex 插件，用于自动打开页面、点击查询/导出/详情/提交、触发后台接口、观察 Network 请求和提取接口结构；主浏览器只负责“接口学习”，不用于正式生产执行。
+- 新增 `Ops-Cli` 接口能力时，默认不要让 Codex 从平台首页自行找路径。应先请用户在主浏览器手动打开目标页面，并由用户完成登录、店铺切换、筛选、下拉框、弹窗、翻页等容易误判的 UI 操作。
+- 如果还需要点击某个关键按钮，先让用户点到对应状态；Codex 只负责观察当前页面、抓取关键请求、提取接口结构、沉淀 SessionHub scene，并写入 `Ops-Cli` 命令。
 - 主浏览器请求只能生成 template，不允许直接作为正式 session 使用。
 - template 只保留 `url pattern`、`method`、参数结构、`body schema`、header names、response structure、trigger steps。
 - 禁止从主浏览器复用 `cookie`、`token`、`authorization`、`csrf`、`x-token` 和任何登录态 headers。
@@ -165,7 +167,7 @@ context 应尽量包含：
 
 新增业务能力的标准路径：
 
-1. 用主浏览器学习页面和接口。
+1. 请用户在主浏览器打开目标页面，并让用户完成复杂 UI 操作；Codex 只观察当前页面和抓关键请求。
 2. 在 `Ops-Cli/sessionhub` 中沉淀或更新 scene。
 3. 在 `Ops-Cli` 中封装可复用平台命令。
 4. 在 `tasks/` 实现业务编排。

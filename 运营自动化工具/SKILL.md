@@ -55,6 +55,8 @@ python demo.py ...
 python browser_test.py ...
 ```
 
+新增 `Ops-Cli` 平台接口能力时，默认先让用户在主浏览器手动打开目标页面，并完成登录、店铺切换、筛选、下拉框、弹窗等复杂 UI 操作。Codex 只观察当前页面、抓关键请求、提取接口结构、沉淀 SessionHub scene，并写 `Ops-Cli` 命令；不要从平台首页长时间试错找路径。
+
 ## 当前已同步的关键任务
 
 - `更新聚水潭资料` -> `ops --json jst product sync`
