@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from core.runtime import WorkflowRunner
 from core.runtime.registry import discover_workflow
+import tasks.company_nas_listing as task_entry
 
 from workflows.company_nas_listing import steps
 from workflows.company_nas_listing.workflow import build_workflow
@@ -81,3 +83,15 @@ def test_real_run_copies_and_builds_excel(monkeypatch, tmp_path: Path) -> None:
     assert run.status == "success"
     assert calls.get("copy", 0) == 1   # 复制一次
     assert calls.get("save", 0) == 1   # 生成上架 Excel 一次
+
+
+def test_legacy_main_routes_to_workflow_without_mounting_or_copying(monkeypatch) -> None:
+    calls: list[list[str]] = []
+    argv = ["company_nas_listing", "--brand", "奥克斯", "--category", "足疗机", "--models", "AQA-JT-RFY06", "--dry-run"]
+    monkeypatch.setattr(sys, "argv", argv)
+    monkeypatch.setattr(task_entry, "_run_workflow", lambda args: calls.append(list(args)) or 0, raising=False)
+    monkeypatch.setattr(task_entry, "mount_nas", lambda: (_ for _ in ()).throw(AssertionError("旧入口不应直接挂载 NAS")))
+    monkeypatch.setattr(task_entry, "copy_product", lambda *a, **k: (_ for _ in ()).throw(AssertionError("旧入口不应直接复制文件")))
+
+    assert task_entry.main() == 0
+    assert calls == [["company_nas_listing", *argv[1:]]]

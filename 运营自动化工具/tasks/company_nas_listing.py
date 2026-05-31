@@ -982,104 +982,20 @@ def validate_outputs(base: Path | list[Path], listing_files: list[Path], include
     }
 
 
-def main() -> None:
-    args = parse_args()
-    model_specs = load_models(args)
-    mount_nas()
-    resolved_mount = active_nas_mount()
+def _run_workflow(workflow_args: list[str]) -> int:
+    from run import run_workflow
 
-    source_base = brand_source_dir(args.brand, args.category)
-    if not source_base.is_dir() and not load_nas_index():
-        raise SystemExit(f"源类目目录不存在：{source_base}")
+    return run_workflow(workflow_args)
 
-    target_base = target_base_dir(args.brand, args.category, args.target_root)
-    plan = []
-    listing_files: list[Path] = []
-    target_dirs: list[Path] = []
-    jst_headers: list[str] = []
-    jst_rows: list[tuple[Any, ...]] = []
-    if not args.skip_excel:
-        jst_headers, jst_rows = load_jst_rows(Path(args.jst_workbook).expanduser())
 
-    try:
-        for spec in model_specs:
-            display, src, source_resolver = indexed_model_source(args.brand, args.category, source_base, spec.path_text)
-            _, dst = model_target(target_base, spec.path_text)
-            if not src.is_dir():
-                plan.append({
-                    "model": display,
-                    "manual_code": spec.manual_code,
-                    "source": str(src),
-                    "source_resolver": source_resolver,
-                    "target": str(dst),
-                    "status": "源目录不存在",
-                    "selected_files": 0,
-                    "copied_files": 0,
-                })
-                continue
-            selection_start = time.monotonic()
-            files = selected_files(src, args.include_buyer_show)
-            selection_seconds = round(time.monotonic() - selection_start, 3)
-            copy_start = time.monotonic()
-            copied, missing_files = copy_product(src, dst, files, replace=not args.no_replace, dry_run=args.dry_run)
-            copy_seconds = round(time.monotonic() - copy_start, 3)
-            record = {
-                "model": display,
-                "manual_code": spec.manual_code,
-                "source": str(src),
-                "source_resolver": source_resolver,
-                "target": str(dst),
-                "status": "ok",
-                "selected_files": len(files),
-                "copied_files": copied,
-                "selection_seconds": selection_seconds,
-                "copy_seconds": copy_seconds,
-                "missing_files": missing_files,
-            }
-            plan.append(record)
-            target_dirs.append(dst)
-            if not args.skip_excel and not args.dry_run:
-                match, remark = match_jst(display, spec.manual_code, jst_headers, jst_rows)
-                row = listing_row(display, args.brand, args.category, match, remark, jst_headers)
-                listing_path = dst / "上架数据.xlsx"
-                save_listing(listing_path, [row], f"{display} 上架数据")
-                listing_files.append(listing_path)
-
-        if not args.skip_excel and not args.dry_run:
-            validation = validate_outputs(target_dirs, listing_files, args.include_buyer_show)
-        else:
-            validation = {}
-
-        unmount = {"attempted": False, "success": True, "message": "keep-mounted"}
-        if args.keep_mounted:
-            unmount = {"attempted": False, "success": True, "message": "keep-mounted"}
-        if not args.keep_mounted:
-            unmount = unmount_nas()
-
-        print(json.dumps({
-            "task": "company_nas_listing",
-            "brand": args.brand,
-            "category": args.category,
-            "target_base": str(target_base),
-            "include_buyer_show": args.include_buyer_show,
-            "dry_run": args.dry_run,
-            "mount_path": str(resolved_mount) if resolved_mount else "",
-            "used_existing_mount": bool(resolved_mount),
-            "items": plan,
-            "listing_workbooks": [str(p) for p in listing_files],
-            "validation": validation,
-            "unmount": unmount,
-            "finished_at": datetime.now().isoformat(timespec="seconds"),
-        }, ensure_ascii=False, indent=2))
-    finally:
-        if not args.keep_mounted and is_mounted():
-            # Best-effort safety if an exception happened after mounting.
-            unmount_nas()
+def main(argv: list[str] | None = None) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
+    return _run_workflow(["company_nas_listing", *args])
 
 
 if __name__ == "__main__":
     try:
-        main()
+        raise SystemExit(main())
     except KeyboardInterrupt:
         print("已中断", file=sys.stderr)
         raise SystemExit(130)

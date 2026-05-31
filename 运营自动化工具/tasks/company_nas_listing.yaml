@@ -1,5 +1,7 @@
 name: company_nas_listing
 description: 公司网盘产品资料下载和上架数据生成
+type: workflow
+workflow: company_nas_listing
 aliases:
   - company_nas_listing
   - 公司网盘下载产品
