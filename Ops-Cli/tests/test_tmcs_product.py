@@ -33,6 +33,41 @@ def test_tmcs_product_sync_requires_template(tmp_path, monkeypatch) -> None:
         product.run_product_sync()
 
 
+def test_tmcs_product_template_filters_cookies_by_target_url(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data" / "tmcs").mkdir(parents=True, exist_ok=True)
+
+    product._write_template(
+        search_scene={
+            "url": "https://merchandise-mc.cbbs.tmall.com/webapi/merchandise/item/searchItem",
+            "method": "POST",
+            "headers": {"cookie": "too=many", "content-length": "10", "accept": "application/json"},
+            "cookies": [
+                {"name": "tmall", "value": "1", "domain": ".tmall.com"},
+                {"name": "cbbs", "value": "2", "domain": ".cbbs.tmall.com"},
+                {"name": "google", "value": "3", "domain": ".google.com"},
+            ],
+            "post_data_form": {},
+        },
+        export_scene={
+            "url": "https://tools.cbbs.tmall.com/gei/export/task/demo",
+            "method": "POST",
+            "headers": {"cookie": "too=many"},
+            "cookies": [
+                {"name": "tools", "value": "1", "domain": ".cbbs.tmall.com"},
+                {"name": "openai", "value": "2", "domain": ".openai.com"},
+            ],
+            "post_data_form": {},
+        },
+    )
+
+    template = json.loads((tmp_path / "data" / "tmcs" / "product_sync_template.json").read_text(encoding="utf-8"))
+
+    assert template["search"]["headers"]["cookie"] == "tmall=1; cbbs=2"
+    assert template["export"]["headers"]["cookie"] == "tools=1"
+    assert "content-length" not in template["search"]["headers"]
+
+
 def test_tmcs_product_sync_use_local_only(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     (tmp_path / "data" / "tmcs").mkdir(parents=True, exist_ok=True)

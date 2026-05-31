@@ -23,6 +23,7 @@ from ops_cli.platforms.tmcs.shared import TMCS_SITE
 from ops_cli.platforms.tmcs.shared import check_scene_or_fail
 from ops_cli.platforms.tmcs.shared import ensure_scene_assets
 from ops_cli.platforms.tmcs.shared import extract_export_task_id
+from ops_cli.platforms.tmcs.shared import filter_cookies_for_url
 from ops_cli.platforms.tmcs.shared import find_download_url
 from ops_cli.platforms.tmcs.shared import form_encode
 from ops_cli.platforms.tmcs.shared import gei_task_download_url
@@ -63,13 +64,21 @@ def _write_template(*, export_scene: dict[str, Any], search_scene: dict[str, Any
         "search": {
             "url": search_scene.get("url"),
             "method": search_scene.get("method"),
-            "headers": _sanitize_tmcs_headers(search_scene.get("headers") or {}, search_scene.get("cookies") or []),
+            "headers": _sanitize_tmcs_headers(
+                search_scene.get("headers") or {},
+                search_scene.get("cookies") or [],
+                target_url=str(search_scene.get("url") or ""),
+            ),
             "post_data_form": search_scene.get("post_data_form") or {},
         },
         "export": {
             "url": export_scene.get("url"),
             "method": export_scene.get("method"),
-            "headers": _sanitize_tmcs_headers(export_scene.get("headers") or {}, export_scene.get("cookies") or []),
+            "headers": _sanitize_tmcs_headers(
+                export_scene.get("headers") or {},
+                export_scene.get("cookies") or [],
+                target_url=str(export_scene.get("url") or ""),
+            ),
             "post_data_form": export_scene.get("post_data_form") or {},
         },
     }
@@ -78,9 +87,14 @@ def _write_template(*, export_scene: dict[str, Any], search_scene: dict[str, Any
     return path
 
 
-def _sanitize_tmcs_headers(headers: dict[str, Any], cookies: list[dict[str, Any]] | None = None) -> dict[str, str]:
+def _sanitize_tmcs_headers(
+    headers: dict[str, Any],
+    cookies: list[dict[str, Any]] | None = None,
+    *,
+    target_url: str = "",
+) -> dict[str, str]:
     cleaned = sanitize_replay_headers(headers, [])
-    cookie_header = merge_cookie_header({}, cookies).get("cookie")
+    cookie_header = merge_cookie_header({}, filter_cookies_for_url(cookies, target_url)).get("cookie")
     if cookie_header:
         cleaned["cookie"] = cookie_header
     return cleaned
