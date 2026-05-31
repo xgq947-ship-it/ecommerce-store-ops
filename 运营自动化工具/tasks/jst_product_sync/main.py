@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Delegate JST product sync to Ops-Cli and keep the business entry stable."""
+"""Compatibility wrapper for the JST product sync workflow."""
 
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -32,34 +31,15 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> int:
-    args = parse_args()
-    command = ["--json", "jst", "product", "sync"]
-    if args.dry_run:
-        command.append("--dry-run")
-    if args.use_local_only:
-        command.append("--use-local-only")
-    if not args.no_filter:
-        if args.keep_brands:
-            command.extend(["--keep-brands", args.keep_brands[0], *args.keep_brands[1:]])
+def _run_workflow(workflow_args: list[str]) -> int:
+    from run import run_workflow
 
-    payload = run_ops_json(command)
-    data = payload.get("data") if isinstance(payload, dict) else {}
-    result = {
-        "success": bool(payload.get("success")),
-        "task": "update_jst_products",
-        "platform": payload.get("platform"),
-        "command": payload.get("command"),
-        "source": str(args.source),
-        "root": str(args.root),
-        "keep_brands": [] if args.no_filter else list(args.keep_brands),
-        "ops_result": payload,
-        "latest_file": data.get("latest_file") if isinstance(data, dict) else None,
-        "import_file": data.get("import_file") if isinstance(data, dict) else None,
-        "targets": data.get("targets") if isinstance(data, dict) else None,
-    }
-    print(json.dumps(result, ensure_ascii=False, indent=2))
-    return 0
+    return run_workflow(workflow_args)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
+    return _run_workflow(["jst_product_sync", *args])
 
 
 if __name__ == "__main__":

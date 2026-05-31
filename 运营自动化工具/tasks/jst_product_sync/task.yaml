@@ -1,4 +1,6 @@
 name: update_jst_products
+type: workflow
+workflow: jst_product_sync
 description: 更新聚水潭商品资料
 aliases:
   - update_jst_products

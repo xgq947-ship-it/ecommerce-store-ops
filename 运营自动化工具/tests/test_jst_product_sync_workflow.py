@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from core.runtime import WorkflowRunner
 from core.runtime.registry import discover_workflow
 
+from tasks.jst_product_sync import main as task_entry
 from workflows.jst_product_sync import steps
 from workflows.jst_product_sync.workflow import build_workflow
 
@@ -21,6 +23,20 @@ def test_workflow_registers() -> None:
         "update_master_data",
         "collect_artifacts",
     ]
+
+
+def test_main_routes_to_workflow_without_direct_ops_call(monkeypatch) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(sys, "argv", ["jst_product_sync", "--dry-run", "--use-local-only"])
+    monkeypatch.setattr(task_entry, "_run_workflow", lambda args: calls.append(list(args)) or 0, raising=False)
+    monkeypatch.setattr(
+        task_entry,
+        "run_ops_json",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("旧入口不应直接请求 Ops-Cli")),
+    )
+
+    assert task_entry.main() == 0
+    assert calls == [["jst_product_sync", "--dry-run", "--use-local-only"]]
 
 
 def test_dry_run_passes_dry_run_and_keep_brands(monkeypatch, tmp_path: Path) -> None:
