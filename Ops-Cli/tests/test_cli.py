@@ -625,6 +625,8 @@ def test_jst_order_invoice_help() -> None:
 
     assert result.exit_code == 0
     assert "--order-id" in result.stdout
+    assert "--shop-name" in result.stdout
+    assert "--invoice-entity" in result.stdout
     assert "--title" in result.stdout
     assert "--tax-no" in result.stdout
     assert "--amount" in result.stdout
@@ -640,6 +642,8 @@ def test_jst_order_invoice_json(monkeypatch) -> None:
             data={
                 "order_id": kwargs["order_id"],
                 "invoice_type": kwargs["invoice_type"],
+                "shop_name": kwargs["shop_name"],
+                "invoice_entity": kwargs["invoice_entity"],
                 "title": kwargs["title"],
                 "tax_no": kwargs["tax_no"],
                 "amount": kwargs["amount"],
@@ -659,6 +663,10 @@ def test_jst_order_invoice_json(monkeypatch) -> None:
             "invoice",
             "--order-id",
             "TB123",
+            "--shop-name",
+            "奥克斯索隆专卖店",
+            "--invoice-entity",
+            "福安市索隆电子有限公司",
             "--title",
             "YOUR_ACCOUNT",
             "--tax-no",
@@ -679,6 +687,8 @@ def test_jst_order_invoice_json(monkeypatch) -> None:
     assert result.exit_code == 0
     assert '"command": "order invoice"' in result.stdout
     assert '"invoice_type": "专用发票"' in result.stdout
+    assert '"shop_name": "奥克斯索隆专卖店"' in result.stdout
+    assert '"invoice_entity": "福安市索隆电子有限公司"' in result.stdout
     assert '"quantity": 1' in result.stdout
     assert '"submitted": false' in result.stdout
 

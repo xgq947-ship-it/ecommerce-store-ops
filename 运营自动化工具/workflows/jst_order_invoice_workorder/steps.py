@@ -18,13 +18,15 @@ from core.runtime import StepContext, failure_result, success_result
 
 from clients.ops_cli_client import run_ops_json
 
-_REQUIRED_INVOICE_FIELDS = ("title", "tax_no", "address", "phone", "bank", "bank_account", "amount")
+_REQUIRED_INVOICE_FIELDS = ("shop_name", "invoice_entity", "title", "tax_no", "address", "phone", "bank", "bank_account", "amount")
 
 
 def _parse_flags(ctx: StepContext) -> argparse.Namespace:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--order-id", dest="order_id", default=None)
     parser.add_argument("--outer-order-id", dest="outer_order_id", default=None)
+    parser.add_argument("--shop-name", dest="shop_name", default=None)
+    parser.add_argument("--invoice-entity", dest="invoice_entity", default=None)
     parser.add_argument("--title", default=None)
     parser.add_argument("--tax-no", dest="tax_no", default=None)
     parser.add_argument("--address", default=None)
@@ -47,6 +49,10 @@ def _build_command(flags: argparse.Namespace, *, execute: bool = False) -> list[
         cmd += ["--order-id", flags.order_id]
     elif flags.outer_order_id:
         cmd += ["--outer-order-id", flags.outer_order_id]
+    if flags.shop_name:
+        cmd += ["--shop-name", flags.shop_name]
+    if flags.invoice_entity:
+        cmd += ["--invoice-entity", flags.invoice_entity]
     cmd += [
         "--title", flags.title,
         "--tax-no", flags.tax_no,
@@ -87,6 +93,8 @@ def check_inputs(ctx: StepContext):
             "execute": flags.execute,
             "order_id": flags.order_id,
             "outer_order_id": flags.outer_order_id,
+            "shop_name": flags.shop_name,
+            "invoice_entity": flags.invoice_entity,
             "title": flags.title,
             "tax_no": flags.tax_no,
             "amount": str(flags.amount),
@@ -159,6 +167,8 @@ def collect_outputs(ctx: StepContext):
             "internal_order_id": resolved.get("internal_order_id") or submit_result.get("internal_order_id"),
             "online_order_id": resolved.get("online_order_id") or submit_result.get("online_order_id"),
             "invoice_type": flags.invoice_type,
+            "shop_name": flags.shop_name,
+            "invoice_entity": flags.invoice_entity,
             "title": flags.title,
             "tax_no": flags.tax_no,
             "amount": str(flags.amount),

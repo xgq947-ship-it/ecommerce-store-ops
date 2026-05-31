@@ -16,6 +16,8 @@
 ```
 --order-id TEXT          JST 内部或平台订单号（与 --outer-order-id 二选一）
 --outer-order-id TEXT    外部平台订单号（淘宝等）
+--shop-name TEXT         店铺名称（必填）
+--invoice-entity TEXT    开票主体公司（必填）
 --title TEXT             发票抬头（必填）
 --tax-no TEXT            税号（必填）
 --address TEXT           公司地址（必填）
@@ -34,7 +36,9 @@
 ```bash
 # 预览（解析订单，不提交）
 python3 run.py workflow jst_order_invoice_workorder \
-  --outer-order-id 5118069602223015134 \
+  --order-id 5111330689403040244 \
+  --shop-name "奥克斯索隆专卖店" \
+  --invoice-entity "福安市索隆电子有限公司" \
   --title "XX有限公司" --tax-no "91330000XXXXXXXX" \
   --address "浙江省杭州市XX区" --phone "0571-12345678" \
   --bank "中国银行" --bank-account "12345678901" \
@@ -42,7 +46,9 @@ python3 run.py workflow jst_order_invoice_workorder \
 
 # 真实提交
 python3 run.py workflow jst_order_invoice_workorder \
-  --outer-order-id 5118069602223015134 \
+  --order-id 5111330689403040244 \
+  --shop-name "奥克斯索隆专卖店" \
+  --invoice-entity "福安市索隆电子有限公司" \
   --title "XX有限公司" --tax-no "91330000XXXXXXXX" \
   --address "浙江省杭州市XX区" --phone "0571-12345678" \
   --bank "中国银行" --bank-account "12345678901" \
@@ -50,7 +56,9 @@ python3 run.py workflow jst_order_invoice_workorder \
 
 # dry-run
 python3 run.py workflow jst_order_invoice_workorder --dry-run \
-  --outer-order-id 5118069602223015134 \
+  --order-id 5111330689403040244 \
+  --shop-name "奥克斯索隆专卖店" \
+  --invoice-entity "福安市索隆电子有限公司" \
   --title "XX有限公司" --tax-no "91330000XXXXXXXX" \
   --address "浙江省杭州市XX区" --phone "0571-12345678" \
   --bank "中国银行" --bank-account "12345678901" \
