@@ -1,4 +1,6 @@
 name: buyer_show
+type: workflow
+workflow: buyer_show
 description: 买家秀自动分组、压缩和登记表回写
 aliases:
   - buyer_show

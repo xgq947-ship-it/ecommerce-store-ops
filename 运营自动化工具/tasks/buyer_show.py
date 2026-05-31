@@ -592,130 +592,16 @@ def make_contact_sheet(base: Path, batch: str | None, out: Path) -> Path:
     return out
 
 
-def main() -> None:
-    args = parse_args()
-    base = Path(args.buyer_show_path).expanduser()
-    if not base.is_dir():
-        raise SystemExit(f"买家秀路径不存在：{base}")
-    workbook = Path(args.workbook).expanduser() if args.workbook else latest_workbook()
-    desktop = Path(args.desktop).expanduser()
+def _run_workflow(workflow_args: list[str]) -> int:
+    from run import run_workflow
 
-    if args.contact_sheet_only:
-        out = Path(tempfile.gettempdir()) / f"buyer_show_contact_{safe_filename(args.model)}.jpg"
-        print(make_contact_sheet(base, args.batch, out))
-        return
+    return run_workflow(workflow_args)
 
-    records, product_name, ci, summary = read_matches(workbook, args.model)
-    rotation_key = args.rotation_key or default_rotation_key(base, args.model, args.batch)
-    rotation_state_file = rotation_state_path()
-    if args.reset_rotation and not args.groups:
-        reset_rotation_cursor(rotation_key)
 
-    try:
-        batch_plan, rotation_meta = select_group_batches(
-            base=base,
-            records=records,
-            groups_arg=args.groups,
-            batch=args.batch,
-            images_per_group=args.images_per_group,
-            allow_total_shortage=args.allow_total_shortage,
-            rotation_key=rotation_key,
-        )
-    except SystemExit as exc:
-        if args.dry_run:
-            print(json.dumps({
-                "workbook": str(workbook),
-                "product_name": product_name,
-                "date_column": summary["date_column"],
-                "pending_date_keys": summary["pending_date_keys"],
-                "pending_records_by_date": summary["pending_records_by_date"],
-                "records": records,
-                "rotation_key": rotation_key,
-                "rotation_state_file": str(rotation_state_file),
-                "can_execute": False,
-                "failure_reason": str(exc),
-            }, ensure_ascii=False, indent=2))
-            return
-        raise
-
-    if args.dry_run:
-        print(json.dumps({
-            "workbook": str(workbook),
-            "product_name": product_name,
-            "date_column": summary["date_column"],
-            "skipped_generated_count": summary["skipped_generated_count"],
-            "pending_date_keys": summary["pending_date_keys"],
-            "pending_records_by_date": summary["pending_records_by_date"],
-            "records": records,
-            "selected_order_ids": summary["selected_order_ids"],
-            "rotation_key": rotation_key,
-            "rotation_state_file": str(rotation_state_file),
-            "rotation_cursor_before": rotation_meta["rotation_cursor_before"],
-            "rotation_cursor_after": rotation_meta["rotation_cursor_after"],
-            "source_mode": rotation_meta["source_mode"],
-            "batches": [
-                {
-                    "date_key": batch["date_key"],
-                    "order_ids": [record["order_id"] for record in batch["records"]],
-                    "groups": [name for name, _ in batch["groups"]],
-                }
-                for batch in batch_plan
-            ],
-            "can_execute": True,
-        }, ensure_ascii=False, indent=2))
-        return
-
-    zip_outputs = []
-    for planned_batch in batch_plan:
-        assignments = list(zip(planned_batch["records"], planned_batch["groups"]))
-        bucketed_assignments = bucket_assignments_by_brusher(assignments)
-        for brusher, items in bucketed_assignments:
-            bucket_records = [record for record, _ in items]
-            bucket_groups = [group for _, group in items]
-            zip_path, manifest = package_zip(bucket_records, product_name, args.model, bucket_groups, desktop, args.images_per_group)
-            counts = verify_zip(zip_path, bucket_records, product_name, args.images_per_group, args.allow_total_shortage)
-            zip_outputs.append({
-                "date_key": planned_batch["date_key"],
-                "brusher": brusher,
-                "zip_path": str(zip_path),
-                "zip_size_bytes": zip_path.stat().st_size,
-                "matched_records": len(bucket_records),
-                "groups": [name for name, _ in bucket_groups],
-                "manifest": manifest,
-                "zip_counts": counts,
-            })
-    backup, verify = patch_workbook(workbook, records, ci)
-    if rotation_meta["source_mode"] == "grouped" and not args.groups:
-        set_rotation_cursor(
-            rotation_key=rotation_key,
-            cursor=rotation_meta["rotation_cursor_after"],
-            base=base,
-            model=args.model,
-            batch=args.batch,
-            group_names=[name for name, _ in grouped_sources(base, batch=args.batch)],
-        )
-    primary_zip_path = zip_outputs[0]["zip_path"] if len(zip_outputs) == 1 else None
-    primary_zip_size = zip_outputs[0]["zip_size_bytes"] if len(zip_outputs) == 1 else None
-    print(json.dumps({
-        "zip_path": primary_zip_path,
-        "zip_size_bytes": primary_zip_size,
-        "zip_outputs": zip_outputs,
-        "workbook": str(workbook),
-        "backup": str(backup),
-        "product_name": product_name,
-        "date_column": summary["date_column"],
-        "skipped_generated_count": summary["skipped_generated_count"],
-        "pending_date_keys": summary["pending_date_keys"],
-        "pending_records_by_date": summary["pending_records_by_date"],
-        "rotation_key": rotation_key,
-        "rotation_state_file": str(rotation_state_file),
-        "rotation_cursor_before": rotation_meta["rotation_cursor_before"],
-        "rotation_cursor_after": rotation_meta["rotation_cursor_after"],
-        "source_mode": rotation_meta["source_mode"],
-        "matched_records": len(records),
-        "workbook_verify": verify,
-    }, ensure_ascii=False, indent=2))
+def main(argv: list[str] | None = None) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
+    return _run_workflow(["buyer_show", *args])
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

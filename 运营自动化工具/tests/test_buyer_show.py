@@ -1,6 +1,9 @@
 from pathlib import Path
+import sys
 import unittest
+from unittest.mock import patch
 
+import tasks.buyer_show as buyer_show
 from tasks.buyer_show import bucket_assignments_by_brusher, date_suffix_for_filename, grouped_sources, plan_group_batches, verify_group_image_counts
 
 
@@ -116,6 +119,19 @@ class BuyerShowTests(unittest.TestCase):
 
         self.assertEqual([name for name, _ in batches[0]["groups"]], ["2"])
         self.assertEqual(cursor_after, 0)
+
+    def test_main_routes_to_workflow_without_packaging_or_patching(self):
+        calls: list[list[str]] = []
+        with (
+            patch.object(sys, "argv", ["buyer_show", "--buyer-show-path", "/tmp/show", "--model", "AQA-12D-838", "--dry-run"]),
+            patch.object(buyer_show, "_run_workflow", side_effect=lambda args: calls.append(list(args)) or 0, create=True),
+            patch.object(buyer_show, "package_zip", side_effect=AssertionError("旧入口不应直接打包")),
+            patch.object(buyer_show, "patch_workbook", side_effect=AssertionError("旧入口不应直接回写登记表")),
+        ):
+            result = buyer_show.main()
+
+        self.assertEqual(result, 0)
+        self.assertEqual(calls, [["buyer_show", "--buyer-show-path", "/tmp/show", "--model", "AQA-12D-838", "--dry-run"]])
 
 
 if __name__ == "__main__":
