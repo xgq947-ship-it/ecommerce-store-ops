@@ -625,6 +625,8 @@ def test_jst_order_invoice_help() -> None:
 
     assert result.exit_code == 0
     assert "--order-id" in result.stdout
+    assert "--shop-name" in result.stdout
+    assert "--invoice-entity" in result.stdout
     assert "--title" in result.stdout
     assert "--tax-no" in result.stdout
     assert "--amount" in result.stdout
@@ -640,6 +642,8 @@ def test_jst_order_invoice_json(monkeypatch) -> None:
             data={
                 "order_id": kwargs["order_id"],
                 "invoice_type": kwargs["invoice_type"],
+                "shop_name": kwargs["shop_name"],
+                "invoice_entity": kwargs["invoice_entity"],
                 "title": kwargs["title"],
                 "tax_no": kwargs["tax_no"],
                 "amount": kwargs["amount"],
@@ -659,6 +663,10 @@ def test_jst_order_invoice_json(monkeypatch) -> None:
             "invoice",
             "--order-id",
             "TB123",
+            "--shop-name",
+            "奥克斯索隆专卖店",
+            "--invoice-entity",
+            "福安市索隆电子有限公司",
             "--title",
             "YOUR_ACCOUNT",
             "--tax-no",
@@ -679,6 +687,8 @@ def test_jst_order_invoice_json(monkeypatch) -> None:
     assert result.exit_code == 0
     assert '"command": "order invoice"' in result.stdout
     assert '"invoice_type": "专用发票"' in result.stdout
+    assert '"shop_name": "奥克斯索隆专卖店"' in result.stdout
+    assert '"invoice_entity": "福安市索隆电子有限公司"' in result.stdout
     assert '"quantity": 1' in result.stdout
     assert '"submitted": false' in result.stdout
 
@@ -984,6 +994,7 @@ def test_jst_profit_help() -> None:
 
     assert result.exit_code == 0
     assert "yesterday" in result.stdout
+    assert "month" in result.stdout
     assert "learn" in result.stdout
 
 
@@ -1032,6 +1043,31 @@ def test_jst_profit_learn_json(monkeypatch) -> None:
     assert result.exit_code == 0
     assert '"command": "profit learn"' in result.stdout
     assert '"business_profit_multi_dimension_report"' in result.stdout
+
+
+def test_jst_profit_month_real_json(monkeypatch) -> None:
+    def fake_get_month_profit(*, month: str) -> CommandResponse:
+        return CommandResponse(
+            success=True,
+            platform="jst",
+            command="profit month",
+            data={
+                "month": month,
+                "store": "（猫超）福安市启明工贸有限公司（肖国清）",
+                "profit": 45678.9,
+                "metric_field": "经营利润",
+                "scene": "business_profit_multi_dimension_report",
+            },
+        )
+
+    monkeypatch.setattr("ops_cli.platforms.jst.platform.get_month_profit", fake_get_month_profit)
+
+    result = runner.invoke(app, ["--json", "jst", "profit", "month", "--month", "2026-04"])
+
+    assert result.exit_code == 0
+    assert '"command": "profit month"' in result.stdout
+    assert '"month": "2026-04"' in result.stdout
+    assert '"profit": 45678.9' in result.stdout
 
 
 def test_jst_profit_yesterday_json_error(monkeypatch) -> None:

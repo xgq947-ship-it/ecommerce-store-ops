@@ -10,7 +10,9 @@ from workflows.jst_order_invoice_workorder import steps
 from workflows.jst_order_invoice_workorder.workflow import build_workflow
 
 _BASE_ARGS = [
-    "--outer-order-id", "5118069602223015134",
+    "--outer-order-id", "5111330689403040244",
+    "--shop-name", "奥克斯索隆专卖店",
+    "--invoice-entity", "福安市索隆电子有限公司",
     "--title", "测试公司",
     "--tax-no", "91330000000000000X",
     "--address", "浙江省杭州市",
@@ -25,7 +27,7 @@ _FAKE_RESOLVE_PAYLOAD = {
     "platform": "jst",
     "command": "order invoice",
     "data": {
-        "order_id": "5118069602223015134",
+        "order_id": "5111330689403040244",
         "internal_order_id": "10001",
         "online_order_id": "LP10001",
         "matched_filter": "outer_so_id",
@@ -40,7 +42,7 @@ _FAKE_SUBMIT_PAYLOAD = {
     "platform": "jst",
     "command": "order invoice",
     "data": {
-        "order_id": "5118069602223015134",
+        "order_id": "5111330689403040244",
         "internal_order_id": "10001",
         "online_order_id": "LP10001",
         "invoice_type": "专用发票",
@@ -158,7 +160,7 @@ def test_check_inputs_fails_on_missing_required_field(tmp_path: Path) -> None:
             "args": [
                 "--outer-order-id", "5118069602223015134",
                 # 故意不传 --title
-                "--tax-no", "91X", "--address", "杭州",
+                "--shop-name", "奥克斯索隆专卖店", "--invoice-entity", "福安市索隆电子有限公司", "--tax-no", "91X", "--address", "杭州",
                 "--phone", "0571", "--bank", "中行", "--bank-account", "123", "--amount", "100",
             ]
         },
@@ -166,6 +168,29 @@ def test_check_inputs_fails_on_missing_required_field(tmp_path: Path) -> None:
     )
     assert run.status == "failed"
     assert any("title" in e for e in run.errors)
+
+
+def test_check_inputs_fails_on_missing_shop_name(tmp_path: Path) -> None:
+    runner = WorkflowRunner(tmp_path)
+    run = runner.run(
+        build_workflow(),
+        inputs={
+            "args": [
+                "--outer-order-id", "5111330689403040244",
+                "--invoice-entity", "福安市索隆电子有限公司",
+                "--title", "测试公司",
+                "--tax-no", "91X",
+                "--address", "杭州",
+                "--phone", "0571",
+                "--bank", "中行",
+                "--bank-account", "123",
+                "--amount", "100",
+            ]
+        },
+        dry_run=False,
+    )
+    assert run.status == "failed"
+    assert any("shop_name" in e for e in run.errors)
 
 
 def test_check_inputs_fails_on_invalid_amount(tmp_path: Path) -> None:

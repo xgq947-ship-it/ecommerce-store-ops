@@ -76,8 +76,16 @@ def register(app: typer.Typer, capabilities: dict[str, CapabilitySpec]) -> None:
         )
 
     @jst_profit_app.command("month")
-    def jst_profit_month(ctx: typer.Context) -> None:
-        _execute(ctx, command_name="ops jst profit month", params={}, handler=get_month_profit)
+    def jst_profit_month(
+        ctx: typer.Context,
+        month: str = typer.Option(..., "--month", help="Target month in YYYY-MM."),
+    ) -> None:
+        _execute(
+            ctx,
+            command_name="ops jst profit month",
+            params={"month": month},
+            handler=lambda: get_month_profit(month=month),
+        )
 
     # --- Product ---
 
@@ -284,6 +292,8 @@ def register(app: typer.Typer, capabilities: dict[str, CapabilitySpec]) -> None:
         order_id: str | None = typer.Option(None, "--order-id", help="JST order number or platform order number."),
         outer_order_id: str | None = typer.Option(None, "--outer-order-id", help="External platform order number."),
         invoice_type: str = typer.Option(DEFAULT_INVOICE_TYPE, "--invoice-type", help="Invoice type. Default: 专用发票."),
+        shop_name: str | None = typer.Option(None, "--shop-name", help="JST shop name."),
+        invoice_entity: str | None = typer.Option(None, "--invoice-entity", help="Invoice entity company name."),
         title: str | None = typer.Option(None, "--title", help="Invoice title."),
         tax_no: str | None = typer.Option(None, "--tax-no", help="Tax number."),
         address: str | None = typer.Option(None, "--address", help="Company address for special VAT invoice."),
@@ -303,6 +313,8 @@ def register(app: typer.Typer, capabilities: dict[str, CapabilitySpec]) -> None:
                 "order_id": order_id,
                 "outer_order_id": outer_order_id,
                 "invoice_type": invoice_type,
+                "shop_name": shop_name,
+                "invoice_entity": invoice_entity,
                 "title": title,
                 "tax_no": tax_no,
                 "address": address,
@@ -317,6 +329,8 @@ def register(app: typer.Typer, capabilities: dict[str, CapabilitySpec]) -> None:
                 order_id=order_id or "",
                 outer_order_id=outer_order_id or "",
                 invoice_type=invoice_type,
+                shop_name=shop_name or "",
+                invoice_entity=invoice_entity or "",
                 title=title or "",
                 tax_no=tax_no or "",
                 address=address or "",
