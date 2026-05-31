@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
@@ -8,35 +7,6 @@ from openpyxl import Workbook, load_workbook
 
 TMCS_REQUIRED_HEADERS = ("商品编码", "SKU编码", "条码")
 JST_REQUIRED_HEADERS = ("商品编码", "淘系控价", "成本价")
-TEMPLATE_REQUIRED_ITEMS = {
-    "消费者到手价": "C4",
-    "供货价系数": "C5",
-    "产品成本": "C7",
-    "国内运费/发仓": "C8",
-    "赠品成本": "C9",
-    "88VIP折扣承担率": "C10",
-    "通用收费率": "C11",
-    "其他收费率": "C12",
-    "仓储/物流费率": "C13",
-    "税点": "C14",
-    "公司管理费用率": "C15",
-    "退款率": "C16",
-    "单笔退款固定损耗": "C17",
-    "目标保留利润率": "C27",
-}
-TEMPLATE_REQUIRED_FORMULAS = {
-    "供货价": "=C4*C5",
-    "真实经营利润": "=E23-E22",
-    "盈亏平衡ROI": '=IF(E29>0,C4/E29,"无利润")',
-    "安全ROI": '=IF(E28>0,C4/E28,"不建议推广")',
-}
-
-
-@dataclass
-class TemplateInfo:
-    path: Path
-    config: dict[str, float]
-    verified_items: dict[str, str]
 
 
 def _normalize_header(value) -> str:
@@ -150,58 +120,6 @@ def find_jst_product(path: Path, barcode_as_product_code: str) -> dict[str, floa
     if match["cost"] <= 0:
         raise ValueError(f"聚水潭商品资料中的成本价无效：{match['cost']}")
     return match
-
-
-def load_roi_template(path: Path) -> TemplateInfo:
-    workbook = load_workbook(path, read_only=False, data_only=False)
-    try:
-        if "猫超ROI测算" not in workbook.sheetnames:
-            raise ValueError("ROI 模板缺少工作表：猫超ROI测算")
-        sheet = workbook["猫超ROI测算"]
-        item_to_row = {}
-        for row in range(1, (sheet.max_row or 0) + 1):
-            item = _normalize_header(sheet.cell(row, 2).value)
-            if item:
-                item_to_row[item] = row
-
-        verified_items: dict[str, str] = {}
-        config = {}
-        missing_items = [name for name in TEMPLATE_REQUIRED_ITEMS if name not in item_to_row]
-        if missing_items:
-            raise ValueError(f"ROI 模板缺少项目：{', '.join(missing_items)}")
-
-        for item_name, expected_cell in TEMPLATE_REQUIRED_ITEMS.items():
-            row = item_to_row[item_name]
-            cell_ref = f"C{row}"
-            if cell_ref != expected_cell:
-                raise ValueError(f"ROI 模板项目位置变更：{item_name} 期望 {expected_cell}，实际 {cell_ref}")
-            verified_items[item_name] = cell_ref
-            config_key = {
-                "供货价系数": "supply_price_factor",
-                "88VIP折扣承担率": "vip_discount_rate",
-                "通用收费率": "general_fee_rate",
-                "其他收费率": "other_fee_rate",
-                "仓储/物流费率": "storage_fee_rate",
-                "税点": "tax_rate",
-                "公司管理费用率": "management_fee_rate",
-                "退款率": "refund_rate",
-                "单笔退款固定损耗": "refund_flat_fee",
-                "国内运费/发仓": "domestic_shipping_fee",
-                "赠品成本": "gift_cost",
-                "目标保留利润率": "safe_profit_rate",
-            }.get(item_name)
-            if config_key:
-                config[config_key] = float(sheet[f"C{row}"].value)
-
-        for item_name, expected_formula in TEMPLATE_REQUIRED_FORMULAS.items():
-            row = item_to_row[item_name]
-            actual_formula = str(sheet[f"E{row}"].value or "").strip()
-            if actual_formula != expected_formula:
-                raise ValueError(f"ROI 模板公式不匹配：{item_name} 期望 {expected_formula}，实际 {actual_formula}")
-
-        return TemplateInfo(path=path, config=config, verified_items=verified_items)
-    finally:
-        workbook.close()
 
 
 def write_result_json(path: Path, payload: dict) -> Path:

@@ -9,7 +9,6 @@ from core.runtime import Artifact, StepContext, failure_result, success_result
 from workflows.tmcs_sku_roi.excel_lookup import (
     find_jst_product,
     find_tmcs_barcode,
-    load_roi_template,
     write_result_excel,
     write_result_json,
 )
@@ -18,7 +17,6 @@ from workflows.tmcs_sku_roi.roi_calculator import DEFAULT_ROI_CONFIG, calculate_
 
 DEFAULT_TMCS_FILE = get_path("tmall_goods_master_file")
 DEFAULT_JST_FILE = get_path("jst_product_master_file")
-DEFAULT_TEMPLATE_FILE = get_path("project_root").parent / "主数据" / "猫超单品ROI保本推广测算表_最终完整版本.xlsx"
 
 
 def _parse_flags(ctx: StepContext) -> argparse.Namespace:
@@ -29,7 +27,6 @@ def _parse_flags(ctx: StepContext) -> argparse.Namespace:
     parser.add_argument("--output", default=None)
     parser.add_argument("--tmcs-file", default=str(DEFAULT_TMCS_FILE))
     parser.add_argument("--jst-file", default=str(DEFAULT_JST_FILE))
-    parser.add_argument("--template-file", default=str(DEFAULT_TEMPLATE_FILE))
     namespace, _ = parser.parse_known_args(ctx.inputs.get("args") or [])
     namespace.dry_run = ctx.dry_run or namespace.dry_run
     return namespace
@@ -48,19 +45,15 @@ def check_inputs(ctx: StepContext):
 
     tmcs_file = Path(flags.tmcs_file).expanduser()
     jst_file = Path(flags.jst_file).expanduser()
-    template_file = Path(flags.template_file).expanduser()
-    missing = [str(path) for path in (tmcs_file, jst_file, template_file) if not path.exists()]
+    missing = [str(path) for path in (tmcs_file, jst_file) if not path.exists()]
     if missing:
         return failure_result([f"文件不存在：{path}" for path in missing])
 
-    template_info = load_roi_template(template_file)
     config = dict(DEFAULT_ROI_CONFIG)
-    config.update(template_info.config)
 
     ctx.state["flags"] = flags
     ctx.state["tmcs_file"] = tmcs_file
     ctx.state["jst_file"] = jst_file
-    ctx.state["template_file"] = template_file
     ctx.state["roi_config"] = config
     return success_result()
 

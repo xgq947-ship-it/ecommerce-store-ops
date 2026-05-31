@@ -1,6 +1,6 @@
 # tmcs_sku_roi workflow
 
-猫超单品 ROI 测算 workflow。只读本地 Excel，不请求猫超后台，不请求聚水潭后台，不修改主数据。
+猫超单品 ROI 测算 workflow。只读本地 Excel，不请求猫超后台，不请求聚水潭后台，不修改主数据，也不依赖 ROI 模板文件。
 
 ## 入口
 
@@ -18,8 +18,7 @@ python3 run.py workflow tmcs_sku_roi --sku-code AUXAMUZ8102R01 --output "/Users/
 3. 若 `--product-code` 命中多条不同条码，默认取第一条继续
 4. 用 `条码 = 聚水潭商品资料.商品编码` 精确匹配聚水潭商品
 5. 读取 `淘系控价` 和 `成本价`
-6. 读取 ROI 模板并校验关键公式
-7. 用 Python 复刻保本 ROI / 安全 ROI，并增加推广占比 12% 的理想 ROI
+6. 用 Python 复刻保本 ROI / 安全 ROI，并增加推广占比 12% 的理想 ROI
 
 ## 输出
 
@@ -40,9 +39,9 @@ python3 run.py workflow tmcs_sku_roi --sku-code AUXAMUZ8102R01 --output "/Users/
 
 ## 公式口径
 
-- 模板来源：`主数据/猫超单品ROI保本推广测算表_最终完整版本.xlsx`
-- 保本 ROI：按模板 `盈亏平衡ROI`
-- 安全 ROI：按模板 `目标保留利润率 = 10%`
+- 默认参数直接来自 `roi_calculator.py` 内的 `DEFAULT_ROI_CONFIG`
+- 保本 ROI：按当前 Python 公式口径
+- 安全 ROI：按目标利润率 `10%`
 - 理想 ROI：新增口径，按 `推广费用 = 成交价 * 12%`
 
 ## 风险控制

@@ -37,44 +37,6 @@ def _make_jst_file(path: Path, *, product_code: str = "BAR001", price: str = "79
     return path
 
 
-def _make_template_file(path: Path) -> Path:
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "猫超ROI测算"
-    rows = {
-        1: ["模块", "项目", "填写值", "单位/类型", "计算结果"],
-        4: ["价格", "消费者到手价", 799, "元", ""],
-        5: ["价格", "供货价系数", 0.9, "%", ""],
-        6: ["价格", "供货价", "", "元", "=C4*C5"],
-        7: ["成本", "产品成本", 361, "元", ""],
-        8: ["成本", "国内运费/发仓", 5, "元", ""],
-        9: ["成本", "赠品成本", 0, "元", ""],
-        10: ["平台扣费", "88VIP折扣承担率", 0, "%", ""],
-        11: ["平台扣费", "通用收费率", 0.007, "%", ""],
-        12: ["平台扣费", "其他收费率", 0.02, "%", ""],
-        13: ["平台扣费", "仓储/物流费率", 0, "%", ""],
-        14: ["平台扣费", "税点", 0.03, "%", ""],
-        15: ["平台扣费", "公司管理费用率", 0.048, "%", ""],
-        16: ["退款", "退款率", 0.1, "%", ""],
-        17: ["退款", "单笔退款固定损耗", 5, "元/退款单", ""],
-        23: ["结果", "未退款前利润", "", "元", "=E6-E19-E20-E21"],
-        24: ["结果", "真实经营利润", "", "元", "=E23-E22"],
-        27: ["推广", "目标保留利润率", 0.1, "%", ""],
-        28: ["推广", "安全推广费/单", "", "元", "=MAX(0,E24-C4*C27)"],
-        29: ["推广", "保本推广费用/单", "", "元", "=MAX(0,E24)"],
-        31: ["推广", "盈亏平衡ROI", "", "倍", '=IF(E29>0,C4/E29,"无利润")'],
-        32: ["推广", "安全ROI", "", "倍", '=IF(E28>0,C4/E28,"不建议推广")'],
-    }
-    for row_index, row_values in rows.items():
-        for col_index, value in enumerate(row_values, start=1):
-            sheet.cell(row_index, col_index, value)
-    batch = workbook.create_sheet("多SKU批量测算")
-    batch.append(["商品名称", "SKU", "成交价"])
-    workbook.save(path)
-    workbook.close()
-    return path
-
-
 def test_workflow_registers() -> None:
     workflow = discover_workflow("tmcs_sku_roi")
     assert workflow.id == "tmcs_sku_roi"
@@ -99,10 +61,8 @@ def test_main_routes_to_workflow(monkeypatch) -> None:
 def test_dry_run_is_safe_and_outputs_preview(tmp_path: Path, monkeypatch) -> None:
     tmcs_file = _make_tmcs_file(tmp_path / "tmcs.xlsx")
     jst_file = _make_jst_file(tmp_path / "jst.xlsx")
-    template_file = _make_template_file(tmp_path / "template.xlsx")
     monkeypatch.setattr(steps, "DEFAULT_TMCS_FILE", tmcs_file)
     monkeypatch.setattr(steps, "DEFAULT_JST_FILE", jst_file)
-    monkeypatch.setattr(steps, "DEFAULT_TEMPLATE_FILE", template_file)
 
     runner = WorkflowRunner(tmp_path / "runs")
     output_file = tmp_path / "result.json"
@@ -130,10 +90,8 @@ def test_product_code_query_uses_first_barcode_when_multiple_rows(tmp_path: Path
     workbook.save(tmcs_file)
     workbook.close()
     jst_file = _make_jst_file(tmp_path / "jst.xlsx", product_code="BAR001")
-    template_file = _make_template_file(tmp_path / "template.xlsx")
     monkeypatch.setattr(steps, "DEFAULT_TMCS_FILE", tmcs_file)
     monkeypatch.setattr(steps, "DEFAULT_JST_FILE", jst_file)
-    monkeypatch.setattr(steps, "DEFAULT_TEMPLATE_FILE", template_file)
 
     runner = WorkflowRunner(tmp_path / "runs")
     run = runner.run(
@@ -150,10 +108,8 @@ def test_product_code_query_uses_first_barcode_when_multiple_rows(tmp_path: Path
 def test_sku_not_found_returns_clear_error(tmp_path: Path, monkeypatch) -> None:
     tmcs_file = _make_tmcs_file(tmp_path / "tmcs.xlsx")
     jst_file = _make_jst_file(tmp_path / "jst.xlsx")
-    template_file = _make_template_file(tmp_path / "template.xlsx")
     monkeypatch.setattr(steps, "DEFAULT_TMCS_FILE", tmcs_file)
     monkeypatch.setattr(steps, "DEFAULT_JST_FILE", jst_file)
-    monkeypatch.setattr(steps, "DEFAULT_TEMPLATE_FILE", template_file)
 
     runner = WorkflowRunner(tmp_path / "runs")
     run = runner.run(build_workflow(), inputs={"dry_run": True, "args": ["--dry-run", "--sku-code", "MISS"]}, dry_run=True)
@@ -165,10 +121,8 @@ def test_sku_not_found_returns_clear_error(tmp_path: Path, monkeypatch) -> None:
 def test_product_code_not_found_returns_clear_error(tmp_path: Path, monkeypatch) -> None:
     tmcs_file = _make_tmcs_file(tmp_path / "tmcs.xlsx")
     jst_file = _make_jst_file(tmp_path / "jst.xlsx")
-    template_file = _make_template_file(tmp_path / "template.xlsx")
     monkeypatch.setattr(steps, "DEFAULT_TMCS_FILE", tmcs_file)
     monkeypatch.setattr(steps, "DEFAULT_JST_FILE", jst_file)
-    monkeypatch.setattr(steps, "DEFAULT_TEMPLATE_FILE", template_file)
 
     runner = WorkflowRunner(tmp_path / "runs")
     run = runner.run(build_workflow(), inputs={"dry_run": True, "args": ["--dry-run", "--product-code", "SPU404"]}, dry_run=True)
@@ -180,10 +134,8 @@ def test_product_code_not_found_returns_clear_error(tmp_path: Path, monkeypatch)
 def test_requires_exactly_one_lookup_key(tmp_path: Path, monkeypatch) -> None:
     tmcs_file = _make_tmcs_file(tmp_path / "tmcs.xlsx")
     jst_file = _make_jst_file(tmp_path / "jst.xlsx")
-    template_file = _make_template_file(tmp_path / "template.xlsx")
     monkeypatch.setattr(steps, "DEFAULT_TMCS_FILE", tmcs_file)
     monkeypatch.setattr(steps, "DEFAULT_JST_FILE", jst_file)
-    monkeypatch.setattr(steps, "DEFAULT_TEMPLATE_FILE", template_file)
 
     runner = WorkflowRunner(tmp_path / "runs")
     run = runner.run(
@@ -199,10 +151,8 @@ def test_requires_exactly_one_lookup_key(tmp_path: Path, monkeypatch) -> None:
 def test_barcode_missing_returns_clear_error(tmp_path: Path, monkeypatch) -> None:
     tmcs_file = _make_tmcs_file(tmp_path / "tmcs.xlsx", barcode="")
     jst_file = _make_jst_file(tmp_path / "jst.xlsx")
-    template_file = _make_template_file(tmp_path / "template.xlsx")
     monkeypatch.setattr(steps, "DEFAULT_TMCS_FILE", tmcs_file)
     monkeypatch.setattr(steps, "DEFAULT_JST_FILE", jst_file)
-    monkeypatch.setattr(steps, "DEFAULT_TEMPLATE_FILE", template_file)
 
     runner = WorkflowRunner(tmp_path / "runs")
     run = runner.run(build_workflow(), inputs={"dry_run": True, "args": ["--dry-run", "--sku-code", "SKU001"]}, dry_run=True)
@@ -214,10 +164,8 @@ def test_barcode_missing_returns_clear_error(tmp_path: Path, monkeypatch) -> Non
 def test_jst_product_not_found_returns_clear_error(tmp_path: Path, monkeypatch) -> None:
     tmcs_file = _make_tmcs_file(tmp_path / "tmcs.xlsx", barcode="BAR404")
     jst_file = _make_jst_file(tmp_path / "jst.xlsx", product_code="BAR001")
-    template_file = _make_template_file(tmp_path / "template.xlsx")
     monkeypatch.setattr(steps, "DEFAULT_TMCS_FILE", tmcs_file)
     monkeypatch.setattr(steps, "DEFAULT_JST_FILE", jst_file)
-    monkeypatch.setattr(steps, "DEFAULT_TEMPLATE_FILE", template_file)
 
     runner = WorkflowRunner(tmp_path / "runs")
     run = runner.run(build_workflow(), inputs={"dry_run": True, "args": ["--dry-run", "--sku-code", "SKU001"]}, dry_run=True)
@@ -229,10 +177,8 @@ def test_jst_product_not_found_returns_clear_error(tmp_path: Path, monkeypatch) 
 def test_real_run_writes_json_artifact(tmp_path: Path, monkeypatch) -> None:
     tmcs_file = _make_tmcs_file(tmp_path / "tmcs.xlsx")
     jst_file = _make_jst_file(tmp_path / "jst.xlsx")
-    template_file = _make_template_file(tmp_path / "template.xlsx")
     monkeypatch.setattr(steps, "DEFAULT_TMCS_FILE", tmcs_file)
     monkeypatch.setattr(steps, "DEFAULT_JST_FILE", jst_file)
-    monkeypatch.setattr(steps, "DEFAULT_TEMPLATE_FILE", template_file)
 
     output_file = tmp_path / "roi.json"
     runner = WorkflowRunner(tmp_path / "runs")
@@ -255,15 +201,13 @@ def test_real_run_writes_json_artifact(tmp_path: Path, monkeypatch) -> None:
 def test_real_run_does_not_modify_source_excels(tmp_path: Path, monkeypatch) -> None:
     tmcs_file = _make_tmcs_file(tmp_path / "tmcs.xlsx")
     jst_file = _make_jst_file(tmp_path / "jst.xlsx")
-    template_file = _make_template_file(tmp_path / "template.xlsx")
-    before = {path: path.stat().st_mtime_ns for path in (tmcs_file, jst_file, template_file)}
+    before = {path: path.stat().st_mtime_ns for path in (tmcs_file, jst_file)}
     monkeypatch.setattr(steps, "DEFAULT_TMCS_FILE", tmcs_file)
     monkeypatch.setattr(steps, "DEFAULT_JST_FILE", jst_file)
-    monkeypatch.setattr(steps, "DEFAULT_TEMPLATE_FILE", template_file)
 
     runner = WorkflowRunner(tmp_path / "runs")
     run = runner.run(build_workflow(), inputs={"dry_run": False, "args": ["--sku-code", "SKU001"]}, dry_run=False)
 
     assert run.status == "success"
-    after = {path: path.stat().st_mtime_ns for path in (tmcs_file, jst_file, template_file)}
+    after = {path: path.stat().st_mtime_ns for path in (tmcs_file, jst_file)}
     assert before == after
