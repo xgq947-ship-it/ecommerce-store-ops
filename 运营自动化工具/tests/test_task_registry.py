@@ -79,6 +79,7 @@ def test_discover_tasks_returns_all_registered_tasks() -> None:
         "process_maochao_bills",
         "update_jst_products",
         "update_maochao_goods",
+        "tmcs_sku_roi",
         "tmcs_sync_jst_shop_goods",
         "jst_pickup_watch",
         "retry_queue",
@@ -95,10 +96,11 @@ def test_discover_tasks_aliases_populated() -> None:
 
 
 def test_discover_tasks_fuzzy_rules_populated() -> None:
-    assert len(FUZZY_TASK_RULES) == 13
+    assert len(FUZZY_TASK_RULES) == 14
     rule_names = {name for name, _ in FUZZY_TASK_RULES}
     assert "buyer_show" in rule_names
     assert "retry_queue" in rule_names
+    assert "tmcs_sku_roi" in rule_names
 
 
 # --- resolve_task tests ---
@@ -142,9 +144,10 @@ def test_normalize_task_text_fixes_typo() -> None:
 
 def test_task_scripts_returns_paths() -> None:
     scripts = task_scripts()
-    assert len(scripts) == 13
+    assert len(scripts) == 14
     assert scripts["buyer_show"] == PROJECT_ROOT / "tasks" / "buyer_show.py"
     assert scripts["tag_jst_brush_orders"] == PROJECT_ROOT / "tasks" / "jst_order_label" / "main.py"
+    assert scripts["tmcs_sku_roi"] == PROJECT_ROOT / "tasks" / "tmcs_sku_roi" / "main.py"
 
 
 # --- task_required_modules ---
