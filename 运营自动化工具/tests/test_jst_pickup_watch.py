@@ -1,10 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from pathlib import Path
-import argparse
-import json
-import logging
+import sys
 
 from tasks import jst_pickup_watch
 
@@ -129,86 +126,20 @@ def test_notification_only_lists_abnormal_platform_order_numbers() -> None:
     assert not hasattr(jst_pickup_watch, "write_reports")
 
 
-def test_no_abnormal_orders_does_not_send_notification(monkeypatch, tmp_path: Path, capsys) -> None:
-    send_calls: list[tuple[str, str]] = []
-
-    monkeypatch.setattr(
-        jst_pickup_watch,
-        "parse_args",
-        lambda: argparse.Namespace(dry_run=False, hours=48, debug=False, notify=True),
-    )
-    monkeypatch.setattr(jst_pickup_watch, "load_config", config)
-    monkeypatch.setattr(
-        jst_pickup_watch,
-        "_setup_logger",
-        lambda timestamp: (logging.getLogger("pickup-watch-test"), tmp_path / "task.log"),
-    )
+def test_main_routes_to_workflow_without_direct_platform_or_notification(monkeypatch) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(sys, "argv", ["jst_pickup_watch.py", "--hours", "48", "--dry-run"])
+    monkeypatch.setattr(jst_pickup_watch, "_run_workflow", lambda args: calls.append(list(args)) or 0, raising=False)
     monkeypatch.setattr(
         jst_pickup_watch,
         "run_ops_json",
-        lambda command, interactive_recovery: {
-            "success": True,
-            "data": {"checked_at": "2026-05-28T10:00:00+08:00", "orders": []},
-        },
-    )
-    monkeypatch.setattr(jst_pickup_watch, "send_wecom", lambda content, msgtype="text": send_calls.append((content, msgtype)))
-
-    assert jst_pickup_watch.main() == 0
-    result = json.loads(capsys.readouterr().out)
-
-    assert send_calls == []
-    assert result["notification"] == {
-        "success": True,
-        "sent": False,
-        "reason": "无异常订单，不发送微信",
-    }
-
-
-def test_abnormal_orders_send_wecom_with_risk_hours(monkeypatch, tmp_path: Path, capsys) -> None:
-    send_calls: list[tuple[str, str]] = []
-
-    monkeypatch.setattr(
-        jst_pickup_watch,
-        "parse_args",
-        lambda: argparse.Namespace(dry_run=False, hours=48, debug=False, notify=True),
-    )
-    monkeypatch.setattr(jst_pickup_watch, "load_config", config)
-    monkeypatch.setattr(
-        jst_pickup_watch,
-        "_setup_logger",
-        lambda timestamp: (logging.getLogger("pickup-watch-test"), tmp_path / "task.log"),
-    )
-    monkeypatch.setattr(
-        jst_pickup_watch,
-        "run_ops_json",
-        lambda command, interactive_recovery: {
-            "success": True,
-            "data": {
-                "checked_at": "2026-05-28T10:00:00+08:00",
-                "orders": [
-                    {
-                        "platform": "天猫超市",
-                        "platform_order_no": "P-TIMEOUT",
-                        "jst_order_no": "J-TIMEOUT",
-                        "jst_pay_time": "2026-05-27T08:00:00+08:00",
-                        "has_pickup_record": False,
-                    }
-                ],
-            },
-        },
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("旧入口不应直接请求平台")),
     )
     monkeypatch.setattr(
         jst_pickup_watch,
         "send_wecom",
-        lambda content, msgtype="text": send_calls.append((content, msgtype)) or {"success": True, "sent": True},
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("旧入口不应直接发送微信")),
     )
 
     assert jst_pickup_watch.main() == 0
-    result = json.loads(capsys.readouterr().out)
-
-    assert result["summary"]["abnormal_orders"] == 1
-    assert send_calls == [(
-        "揽收异常 1单\n检查：05-28 10:00\n\n已超时：\n1. P-TIMEOUT  距付26.5h  超2.5h",
-        "markdown",
-    )]
-    assert result["notification"] == {"success": True, "sent": True}
+    assert calls == [["jst_pickup_watch", "--hours", "48", "--dry-run"]]

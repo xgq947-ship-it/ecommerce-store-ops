@@ -1,4 +1,6 @@
 name: jst_pickup_watch
+type: workflow
+workflow: jst_pickup_watch
 description: 聚水潭付款订单揽收时效风险监控
 aliases:
   - jst_pickup_watch

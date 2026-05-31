@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import traceback
 from datetime import datetime, time, timedelta
 from pathlib import Path
 from typing import Any
@@ -167,73 +166,15 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> int:
-    args = parse_args()
-    config = load_config()
-    hours = args.hours or int(config["pickup_watch"]["hours"])
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    logger, log_path = _setup_logger(timestamp)
-    logger.info("聚水潭揽收监控开始 hours=%s dry_run=%s notify=%s", hours, args.dry_run, args.notify)
-    try:
-        command = ["--json", "jst", "order", "pickup-watch", "--hours", str(hours), "--output", "json"]
-        if args.dry_run:
-            command.append("--dry-run")
-        if args.debug:
-            command.append("--debug")
-        payload = run_ops_json(command, interactive_recovery=not args.dry_run)
-        data = payload["data"]
-        checked_at = str(data.get("checked_at") or datetime.now().astimezone().isoformat(timespec="seconds"))
-        check_time = _parse_datetime(checked_at, datetime.now().astimezone())
-        abnormal, counts = evaluate_orders(list(data.get("orders") or []), config, now=check_time)
-        content = build_notification_content(
-            counts=counts,
-            rows=abnormal,
-        )
-        should_notify = bool(abnormal) and (args.dry_run or args.notify)
-        if not abnormal:
-            notification = {
-                "success": True,
-                "sent": False,
-                "reason": "无异常订单，不发送微信",
-            }
-        elif should_notify:
-            notification = (
-                {
-                    "success": True,
-                    "sent": False,
-                    "dry_run": True,
-                    "preview": content,
-                }
-                if args.dry_run
-                else send_wecom(content, msgtype="markdown")
-            )
-        else:
-            notification = {
-                "success": True,
-                "sent": False,
-                "reason": "通知未启用",
-            }
-        logger.info("拉取订单数量=%s 异常订单数量=%s counts=%s", counts["checked_orders"], counts["abnormal_orders"], counts)
-        logger.info("异常订单号=%s", [item.get("platform_order_no") or item.get("jst_order_no") for item in abnormal])
-        logger.info("send_wecom 推送结果=%s", notification)
-        result = {
-            "success": True,
-            "task": "jst_pickup_watch",
-            "dry_run": args.dry_run,
-            "hours": hours,
-            "checked_at": checked_at,
-            "summary": counts,
-            "abnormal_order_nos": [item.get("platform_order_no") or item.get("jst_order_no") for item in abnormal],
-            "task_log_path": str(log_path),
-            "notification": notification,
-            "ops_result": {key: value for key, value in payload.items() if not key.startswith("_ops_")},
-        }
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-        return 0
-    except Exception as exc:
-        logger.error("执行失败：%s\n%s", exc, traceback.format_exc())
-        print(json.dumps({"success": False, "task": "jst_pickup_watch", "error": str(exc), "task_log_path": str(log_path)}, ensure_ascii=False, indent=2))
-        return 1
+def _run_workflow(workflow_args: list[str]) -> int:
+    from run import run_workflow
+
+    return run_workflow(workflow_args)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
+    return _run_workflow(["jst_pickup_watch", *args])
 
 
 if __name__ == "__main__":
