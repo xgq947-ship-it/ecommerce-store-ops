@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 from tasks import append_brush_orders
 
 
@@ -43,3 +45,17 @@ def test_dry_run_append_does_not_preflight_jst(monkeypatch) -> None:
     append_brush_orders.run(dry_run=True)
 
     assert calls == []
+
+
+def test_main_routes_to_workflow_without_direct_append(monkeypatch) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(sys, "argv", ["append_brush_orders", "--dry-run", "昨天的"])
+    monkeypatch.setattr(append_brush_orders, "_run_workflow", lambda args: calls.append(list(args)) or 0, raising=False)
+    monkeypatch.setattr(
+        append_brush_orders,
+        "run",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("旧入口不应直接追加登记表")),
+    )
+
+    assert append_brush_orders.main() == 0
+    assert calls == [["append_brush_orders", "--dry-run", "昨天的"]]

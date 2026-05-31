@@ -1,4 +1,6 @@
 name: append_brush_orders
+type: workflow
+workflow: append_brush_orders
 description: 刷单表格登记
 aliases:
   - append_brush_orders

@@ -1324,66 +1324,16 @@ def run(
     }
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="自动识别今日刷单表格并追加到登记表")
-    parser.add_argument("--work-dir", default=str(DEFAULT_WORK_DIR), help="刷单登记工作目录")
-    parser.add_argument("--source-dir", help="今日刷单表格文件夹；默认读取 config/paths.yaml 的 brush_orders_dir")
-    parser.add_argument("--product-file", default=str(DEFAULT_PRODUCT_FILE), help="聚水潭商品资料路径")
-    parser.add_argument("--brush-product-file", default=str(DEFAULT_BRUSH_PRODUCT_FILE), help="刷手对应商品编码表")
-    parser.add_argument("--no-auto-fetch-wechat", action="store_true", help="关闭从微信文件目录自动复制源表")
-    parser.add_argument("--wechat-file-dir", default=str(DEFAULT_WECHAT_FILE_DIR), help="微信 file 总目录")
-    parser.add_argument("--wechat-target-dir", default=str(DEFAULT_WECHAT_TARGET_DIR), help="微信源表复制目标目录")
-    parser.add_argument(
-        "--wechat-date",
-        type=parse_month_day,
-        help="要匹配的微信文件日期，支持 430、4.30、4-30、4月30；默认今天",
-    )
-    parser.add_argument("--print-skipped-wechat", action="store_true", help="打印微信扫描跳过文件")
-    parser.add_argument("--dry-run", action="store_true", help="只预览识别和提取结果，不写入登记表")
-    parser.add_argument("date_words", nargs="*", help="自然日期，例如 昨天的、4月29、4.29")
-    args = parser.parse_args()
-    context = TaskContext("append_brush_orders")
-    context.add_input("dry_run", args.dry_run)
-    context.add_input("work_dir", args.work_dir)
-    context.add_input("source_dir", args.source_dir or str(DEFAULT_WECHAT_TARGET_DIR))
-    context.add_input("product_file", args.product_file)
-    context.add_input("brush_product_file", args.brush_product_file)
-    context.add_input("auto_fetch_wechat", not args.no_auto_fetch_wechat)
-    context.add_input("date_words", args.date_words)
-    wechat_date = args.wechat_date or (parse_natural_month_day(args.date_words) if args.date_words else None)
-    try:
-        configure_paths(
-            work_dir=Path(args.work_dir),
-            source_dir=Path(args.source_dir) if args.source_dir else None,
-            product_file=Path(args.product_file),
-            brush_product_file=Path(args.brush_product_file),
-            wechat_file_dir=Path(args.wechat_file_dir),
-            wechat_target_dir=Path(args.wechat_target_dir),
-        )
-        summary = run(
-            dry_run=args.dry_run,
-            auto_fetch_wechat=not args.no_auto_fetch_wechat,
-            wechat_month_day=wechat_date,
-            print_skipped_wechat=args.print_skipped_wechat,
-        )
-        context.add_output("summary", summary)
-        context.add_artifact(summary["latest_brush_orders_path"])
-        if summary.get("appended_count"):
-            context.add_next_task(
-                "tag_jst_brush_orders",
-                {"input": summary["latest_brush_orders_path"], "orders": summary["appended_orders"]},
-            )
-        context_path = context.finish("dry_run_success" if args.dry_run else "success")
-        print(f"任务上下文：{context_path}")
-    except Exception as exc:
-        context.add_error(str(exc))
-        context_path = context.finish("failed")
-        print(f"任务上下文：{context_path}")
-        raise
+def _run_workflow(workflow_args: list[str]) -> int:
+    from run import run_workflow
+
+    return run_workflow(workflow_args)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
+    return _run_workflow(["append_brush_orders", *args])
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as exc:
-        raise SystemExit(f"运行失败：{exc}") from exc
+    raise SystemExit(main())
