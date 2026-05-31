@@ -1,4 +1,6 @@
 name: tmcs_sync_jst_shop_goods
+type: workflow
+workflow: tmcs_sync_jst_shop_goods
 description: 猫超平台商品信息同步聚水潭店铺商品资料
 aliases:
   - tmcs_sync_jst_shop_goods

@@ -1,21 +1,26 @@
 #!/usr/bin/env python3
-"""Expose the existing TMCS-to-JST skill through the unified task runner."""
+"""Compatibility wrapper for the TMCS-to-JST workflow."""
 
 from __future__ import annotations
 
-import runpy
 import sys
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SKILL_ENTRY = ROOT / "skills" / "tmcs_sync_jst_shop_goods" / "main.py"
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 
-def main() -> int:
-    sys.argv.insert(1, "run")
-    runpy.run_path(str(SKILL_ENTRY), run_name="__main__")
-    return 0
+def _run_workflow(workflow_args: list[str]) -> int:
+    from run import run_workflow
+
+    return run_workflow(workflow_args)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
+    return _run_workflow(["tmcs_sync_jst_shop_goods", *args])
 
 
 if __name__ == "__main__":

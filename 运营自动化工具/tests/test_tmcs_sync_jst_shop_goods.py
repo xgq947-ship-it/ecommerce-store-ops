@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import sys
-import subprocess
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
@@ -18,6 +17,7 @@ PROJECT_ROOT = SKILL_DIR.parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.task_registry import resolve_task, task_scripts  # noqa: E402
+import tasks.tmcs_sync_jst_shop_goods.main as task_entry  # noqa: E402
 
 
 def test_skill_does_not_contain_platform_browser_automation_code() -> None:
@@ -139,14 +139,11 @@ def test_formal_skill_uses_run_py_entry_and_trigger_document() -> None:
     assert "python3 run.py 聚水潭商品信息同步猫超" in metadata
 
 
-def test_formal_task_entry_defaults_to_run_subcommand() -> None:
-    result = subprocess.run(
-        [sys.executable, str(task_scripts()["tmcs_sync_jst_shop_goods"]), "--help"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+def test_formal_task_entry_routes_to_workflow_without_skill_runpy(monkeypatch) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(sys, "argv", ["main.py", "--item-ids", "1052305450766", "--dry-run"])
+    monkeypatch.setattr(task_entry, "_run_workflow", lambda args: calls.append(list(args)) or 0, raising=False)
 
-    assert result.returncode == 0
-    assert "--item-ids" in result.stdout
-    assert "--import-jst" in result.stdout
+    assert task_entry.main() == 0
+    assert not hasattr(task_entry, "runpy")
+    assert calls == [["tmcs_sync_jst_shop_goods", "--item-ids", "1052305450766", "--dry-run"]]
