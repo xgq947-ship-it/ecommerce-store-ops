@@ -31,27 +31,15 @@ def print_retries(rows: list[dict]) -> None:
         print(f"- {row.get('retry_id')} | {row.get('task_name')} | {row.get('reason')} | {row.get('payload')}")
 
 
-def main() -> int:
-    args = parse_args()
-    if args.done:
-        if not args.retry_id:
-            raise SystemExit("--done 需要指定 retry_id")
-        path = mark_done(args.retry_id)
-        print(f"已标记完成：{path}")
-        return 0
+def _run_workflow(workflow_args: list[str]) -> int:
+    from run import run_workflow
 
-    if args.all:
-        results = replay_all(execute=args.execute)
-        print(json.dumps({"execute": args.execute, "results": results}, ensure_ascii=False, indent=2))
-        return 0 if all(item["returncode"] == 0 for item in results) else 1
+    return run_workflow(workflow_args)
 
-    if args.retry_id:
-        result = replay_retry(args.retry_id, execute=args.execute)
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-        return int(result["returncode"])
 
-    print_retries(list_retries())
-    return 0
+def main(argv: list[str] | None = None) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
+    return _run_workflow(["retry_queue", *args])
 
 
 if __name__ == "__main__":

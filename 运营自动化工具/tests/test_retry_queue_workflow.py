@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from core.runtime import WorkflowRunner
 from core.runtime.registry import discover_workflow
+import tasks.retry_queue as task_entry
 
 from workflows.retry_queue import steps
 from workflows.retry_queue.workflow import build_workflow
@@ -82,3 +84,15 @@ def test_done_real_marks(monkeypatch, tmp_path: Path) -> None:
     runner.run(build_workflow(), inputs={"dry_run": False, "args": ["r1", "--done"]}, dry_run=False)
 
     assert calls.get("done") == "r1"
+
+
+def test_legacy_main_routes_to_workflow_without_replaying(monkeypatch) -> None:
+    calls: list[list[str]] = []
+    argv = ["retry_queue", "--all", "--dry-run", "--execute"]
+    monkeypatch.setattr(sys, "argv", argv)
+    monkeypatch.setattr(task_entry, "_run_workflow", lambda args: calls.append(list(args)) or 0, raising=False)
+    monkeypatch.setattr(task_entry, "replay_all", lambda *a, **k: (_ for _ in ()).throw(AssertionError("旧入口不应直接重放队列")))
+    monkeypatch.setattr(task_entry, "replay_retry", lambda *a, **k: (_ for _ in ()).throw(AssertionError("旧入口不应直接重放任务")))
+
+    assert task_entry.main() == 0
+    assert calls == [["retry_queue", *argv[1:]]]

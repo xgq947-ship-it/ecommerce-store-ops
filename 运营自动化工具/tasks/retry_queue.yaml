@@ -1,5 +1,7 @@
 name: retry_queue
 description: 查看或重放失败任务队列
+type: workflow
+workflow: retry_queue
 aliases:
   - retry_queue
   - 查看失败任务
