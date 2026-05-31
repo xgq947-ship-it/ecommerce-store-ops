@@ -312,39 +312,15 @@ def print_search_result(result: dict[str, Any]) -> None:
         print(f"  匹配原因：{item.get('match_reason', '')}")
 
 
-def main() -> int:
-    args = parse_args()
-    setup_logging()
-    if args.query:
-        print_search_result(search_index(args.query, limit=args.limit))
-        return 0
+def _run_workflow(workflow_args: list[str]) -> int:
+    from run import run_workflow
 
-    should_mount_nas = args.root is None
-    mounted_before = active_nas_mount() is not None
-    if should_mount_nas:
-        mount_nas()
-    root = Path(args.root).expanduser() if args.root else nas_product_root()
-    try:
-        records = scan_index(root, max_depth=args.max_depth, include_files=args.include_files)
-        summary = summarize(records)
-        logging.info(
-            "indexed root=%s summary=%s dry_run=%s max_depth=%s include_files=%s",
-            root,
-            summary,
-            args.dry_run,
-            args.max_depth,
-            args.include_files,
-        )
-        if not args.dry_run:
-            write_json(root, records, summary)
-            write_csv(records)
-            write_md(root, records, summary)
-        print_build_result(summary, dry_run=args.dry_run)
-        return 0
-    finally:
-        if should_mount_nas and not args.keep_mounted and not mounted_before:
-            unmount_result = unmount_nas()
-            logging.info("unmount result: %s", unmount_result)
+    return run_workflow(workflow_args)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
+    return _run_workflow(["company_nas_index", *args])
 
 
 if __name__ == "__main__":

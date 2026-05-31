@@ -1,5 +1,7 @@
 name: company_nas_index
 description: 公司网盘产品资料目录索引和搜索
+type: workflow
+workflow: company_nas_index
 aliases:
   - company_nas_index
   - 扫描公司网盘目录

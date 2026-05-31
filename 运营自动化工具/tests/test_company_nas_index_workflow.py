@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from core.runtime import WorkflowRunner
 from core.runtime.registry import discover_workflow
+import tasks.company_nas_index as task_entry
 
 from workflows.company_nas_index import steps
 from workflows.company_nas_index.workflow import build_workflow
@@ -77,3 +79,14 @@ def test_search_mode_is_readonly(monkeypatch, tmp_path: Path) -> None:
     assert calls.get("json", 0) == 0
     collect = json.loads((runner.last_run_dir / "steps" / "collect_artifacts.json").read_text(encoding="utf-8"))
     assert collect["outputs"]["match_count"] == 2
+
+
+def test_legacy_main_routes_to_workflow_without_scanning_or_writing(monkeypatch) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(sys, "argv", ["company_nas_index", "--dry-run"])
+    monkeypatch.setattr(task_entry, "_run_workflow", lambda args: calls.append(list(args)) or 0, raising=False)
+    monkeypatch.setattr(task_entry, "scan_index", lambda *a, **k: (_ for _ in ()).throw(AssertionError("旧入口不应直接扫描 NAS")))
+    monkeypatch.setattr(task_entry, "write_json", lambda *a, **k: (_ for _ in ()).throw(AssertionError("旧入口不应直接写索引")))
+
+    assert task_entry.main() == 0
+    assert calls == [["company_nas_index", "--dry-run"]]
