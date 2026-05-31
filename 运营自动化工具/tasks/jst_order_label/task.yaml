@@ -1,4 +1,6 @@
 name: tag_jst_brush_orders
+type: workflow
+workflow: jst_order_label
 description: 聚水潭刷单订单打标
 aliases:
   - tag_jst_brush_orders
