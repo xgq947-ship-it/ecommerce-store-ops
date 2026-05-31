@@ -1,5 +1,7 @@
 name: process_maochao_bills
 description: 猫超月账单整理
+type: workflow
+workflow: tmall_monthly_bill
 aliases:
   - process_maochao_bills
   - 运行猫超账单整理

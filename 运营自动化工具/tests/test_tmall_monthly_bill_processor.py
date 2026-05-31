@@ -1,5 +1,6 @@
 from __future__ import annotations
 import argparse
+import sys
 
 from decimal import Decimal
 from pathlib import Path
@@ -496,3 +497,14 @@ def test_download_promotion_bill_enables_interactive_recovery_for_cli(tmp_path: 
 
     assert found == expected.resolve()
     assert observed["kwargs"] == {"interactive_recovery": True}
+
+
+def test_legacy_main_routes_to_workflow_without_processing(monkeypatch) -> None:
+    calls: list[list[str]] = []
+    argv = ["tmall_monthly_bill", "--dry-run"]
+    monkeypatch.setattr(sys, "argv", argv)
+    monkeypatch.setattr(tmall_main, "_run_workflow", lambda args: calls.append(list(args)) or 0, raising=False)
+    monkeypatch.setattr(tmall_main, "process", lambda *a, **k: (_ for _ in ()).throw(AssertionError("旧入口不应直接整理账单")))
+
+    assert tmall_main.main() == 0
+    assert calls == [["tmall_monthly_bill", "--dry-run"]]
