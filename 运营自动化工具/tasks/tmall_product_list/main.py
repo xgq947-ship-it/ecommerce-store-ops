@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Delegate TMCS product sync to Ops-Cli and keep the business entry stable."""
+"""Compatibility wrapper for the TMCS product list workflow."""
 
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -40,33 +39,15 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> int:
-    args = parse_args()
-    command = ["--json", "tmcs", "product", "sync"]
-    if args.dry_run:
-        command.append("--dry-run")
-    if args.skip_auto_download:
-        command.append("--use-local-only")
-    if args.force_refresh:
-        command.append("--force-refresh")
+def _run_workflow(workflow_args: list[str]) -> int:
+    from run import run_workflow
 
-    payload = run_ops_json(command)
-    data = payload.get("data") if isinstance(payload, dict) else {}
-    result = {
-        "success": bool(payload.get("success")),
-        "task": "update_maochao_goods",
-        "platform": payload.get("platform"),
-        "command": payload.get("command"),
-        "dry_run": args.dry_run,
-        "force_refresh": args.force_refresh,
-        "use_local_only": args.skip_auto_download,
-        "ops_result": payload,
-        "import_file": data.get("import_file") if isinstance(data, dict) else None,
-        "latest_file": data.get("latest_file") if isinstance(data, dict) else None,
-        "sync_summary": data.get("sync_summary") if isinstance(data, dict) else None,
-    }
-    print(json.dumps(result, ensure_ascii=False, indent=2))
-    return 0
+    return run_workflow(workflow_args)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
+    return _run_workflow(["tmall_product_list", *args])
 
 
 if __name__ == "__main__":

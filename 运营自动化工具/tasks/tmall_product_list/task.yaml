@@ -1,4 +1,6 @@
 name: update_maochao_goods
+type: workflow
+workflow: tmall_product_list
 description: 更新猫超商品列表
 aliases:
   - update_maochao_goods
