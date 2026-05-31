@@ -1,4 +1,6 @@
 name: jst_brush_reimburse_workorder
+type: workflow
+workflow: jst_brush_reimburse_workorder
 description: 聚水潭刷单报销工单
 aliases:
   - jst_brush_reimburse_workorder

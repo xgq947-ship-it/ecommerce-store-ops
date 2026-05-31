@@ -437,111 +437,15 @@ def choose_candidate(
     return None, results
 
 
-def main() -> int:
-    args = parse_args()
-    log_path = setup_logging()
-    failures: list[FailureRecord] = []
-    workbook_path = Path(args.input).expanduser().resolve()
-    try:
-        batch = read_current_batch(workbook_path)
-    except (FileNotFoundError, RuntimeError) as exc:
-        print(exc)
-        return 1
+def _run_workflow(workflow_args: list[str]) -> int:
+    from run import run_workflow
 
-    logging.info("登记表路径：%s", workbook_path)
-    logging.info("当前批次范围：%s-%s", batch.start_row, batch.end_row)
-    logging.info("当前批次订单数：%s", len(batch.orders))
-    logging.info("本金合计：%s", money_text(batch.principal_total))
-    logging.info("打款金额合计：%s", money_text(batch.payout_total))
+    return run_workflow(workflow_args)
 
-    print_batch_summary(batch)
-    try:
-        candidate, checked = choose_candidate(
-            batch,
-            order_no=args.order_no,
-            interactive_recovery=not args.dry_run,
-        )
-        skipped = [item for item in checked if item.skip_reason or item.has_existing_workorder]
-        for item in skipped:
-            reason = item.skip_reason or "该订单已存在运营特殊单报销打款工单"
-            print(f"跳过订单：{item.order.order_no} | {reason}")
-            logging.info("跳过订单：%s | %s", item.order.order_no, reason)
-        if candidate is None:
-            check_failures = [item for item in checked if item.skip_reason]
-            if check_failures:
-                failures.extend(
-                    FailureRecord(order_no=item.order.order_no, reason=item.skip_reason or "")
-                    for item in check_failures
-                )
-                print("当前批次工单状态核验失败，已停止创建")
-                logging.error("当前批次工单状态核验失败，已停止创建")
-                failed_export = write_failed_export(failures)
-                if failed_export:
-                    print(f"失败导出：{failed_export}")
-                print(f"日志：{log_path}")
-                return 1
-            print("当前批次所有订单均已存在报销工单")
-            logging.info("当前批次所有订单均已存在报销工单")
-            failed_export = write_failed_export(failures)
-            if failed_export:
-                print(f"失败导出：{failed_export}")
-            print(f"日志：{log_path}")
-            return 0
 
-        print(f"即将使用订单创建工单：{candidate.order.order_no}")
-        print(f"LP线上订单号：{candidate.lp_order_no}")
-        print(f"o_id：{candidate.o_id}")
-        print(f"是否已有工单：{'是' if candidate.has_existing_workorder else '否'}")
-
-        if args.dry_run:
-            print("模式：dry-run（只查询，不上传、不创建、不回写）")
-            print(f"日志：{log_path}")
-            return 0
-
-        # 创建动作由 Ops-Cli 内部再次检查，避免重复创建。
-        create_result = ops_reimburse_payload(batch, candidate.order, execute=True, interactive_recovery=True)
-        if create_result.get("has_existing_workorder") and not create_result.get("submitted"):
-            print("目标订单已存在报销工单，已停止创建。")
-            logging.info("创建前复核发现工单已存在：%s", candidate.order.order_no)
-            print(f"日志：{log_path}")
-            return 0
-
-        upload_url = cell_text(create_result.get("upload_url"))
-        print(f"上传 URL：{upload_url}")
-        logging.info("上传 URL：%s", upload_url)
-        logging.info("Ops-Cli 创建工单结果：%s", create_result.get("result"))
-
-        backup_path = backup_workbook(workbook_path)
-        logging.info("登记表备份：%s", backup_path)
-        marker_row = write_marker_row(batch)
-        print(f"创建成功，已写黄色标记行：第 {marker_row} 行")
-        logging.info("创建成功，已写黄色标记行：第 %s 行", marker_row)
-    except PermissionError as exc:
-        message = f"Excel 文件可能正在被占用：{exc}"
-        failures.append(FailureRecord(order_no=args.order_no or (candidate.order.order_no if 'candidate' in locals() and candidate else ""), reason=message))
-        print(message)
-        logging.exception("登记表回写失败")
-        failed_export = write_failed_export(failures)
-        if failed_export:
-            print(f"失败导出：{failed_export}")
-        print(f"日志：{log_path}")
-        return 1
-    except Exception as exc:
-        message = str(exc)
-        failures.append(FailureRecord(order_no=args.order_no or "", reason=message))
-        print(message)
-        logging.exception("处理异常")
-        failed_export = write_failed_export(failures)
-        if failed_export:
-            print(f"失败导出：{failed_export}")
-        print(f"日志：{log_path}")
-        return 1
-
-    failed_export = write_failed_export(failures)
-    if failed_export:
-        print(f"失败导出：{failed_export}")
-    print(f"日志：{log_path}")
-    return 0
+def main(argv: list[str] | None = None) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
+    return _run_workflow(["jst_brush_reimburse_workorder", *args])
 
 
 if __name__ == "__main__":
