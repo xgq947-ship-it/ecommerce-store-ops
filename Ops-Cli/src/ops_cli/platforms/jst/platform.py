@@ -76,8 +76,16 @@ def register(app: typer.Typer, capabilities: dict[str, CapabilitySpec]) -> None:
         )
 
     @jst_profit_app.command("month")
-    def jst_profit_month(ctx: typer.Context) -> None:
-        _execute(ctx, command_name="ops jst profit month", params={}, handler=get_month_profit)
+    def jst_profit_month(
+        ctx: typer.Context,
+        month: str = typer.Option(..., "--month", help="Target month in YYYY-MM."),
+    ) -> None:
+        _execute(
+            ctx,
+            command_name="ops jst profit month",
+            params={"month": month},
+            handler=lambda: get_month_profit(month=month),
+        )
 
     # --- Product ---
 

@@ -142,16 +142,32 @@ def _save_scene_data(payload: dict[str, Any]) -> Path:
 
 
 def _yesterday_value() -> date:
-    return date.today() - timedelta(days=1)
+    return _today() - timedelta(days=1)
 
 
-def _date_range_payload(target_date: date) -> tuple[list[str], list[str], str, str]:
-    start_local = datetime.combine(target_date, time.min, tzinfo=SHANGHAI_TZ)
-    end_local = datetime.combine(target_date, time.max.replace(microsecond=999000), tzinfo=SHANGHAI_TZ)
+def _today() -> date:
+    return date.today()
+
+
+def _normalize_month(month_value: str) -> tuple[str, date, date]:
+    try:
+        month_start = date.fromisoformat(f"{month_value}-01")
+    except ValueError as exc:
+        raise RuntimeError("月份只支持 YYYY-MM") from exc
+    normalized = month_start.strftime("%Y-%m")
+    if normalized != month_value:
+        raise RuntimeError("月份只支持 YYYY-MM")
+    next_month = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
+    month_end = next_month - timedelta(days=1)
+    return normalized, month_start, month_end
+
+
+def _period_payload(start_date: date, end_date: date) -> tuple[list[str], list[str], str, str]:
+    start_local = datetime.combine(start_date, time.min, tzinfo=SHANGHAI_TZ)
+    end_local = datetime.combine(end_date, time.max.replace(microsecond=999000), tzinfo=SHANGHAI_TZ)
     start_utc = start_local.astimezone(ZoneInfo("UTC")).strftime("%Y-%m-%dT%H:%M:%S.000Z")
     end_utc = end_local.astimezone(ZoneInfo("UTC")).strftime("%Y-%m-%dT%H:%M:%S.999Z")
-    local_date = target_date.isoformat()
-    return [start_utc, end_utc], [start_utc, end_utc], local_date, local_date
+    return [start_utc, end_utc], [start_utc, end_utc], start_date.isoformat(), end_date.isoformat()
 
 
 def _write_template(*, scene_data: dict[str, Any], store: str) -> Path:
@@ -190,7 +206,32 @@ def _apply_payload_overrides(template: dict[str, Any], *, target_date: date, sto
     condition = ((payload.setdefault("data", {})).setdefault("condition", {}))
     defaults = template.get("defaults") or {}
     shop_ids = list(defaults.get("shop_ids") or condition.get("shop") or [])
-    date_range, older_date_range, begin_date, end_date = _date_range_payload(target_date)
+    date_range, older_date_range, begin_date, end_date = _period_payload(target_date, target_date)
+    condition["shop"] = shop_ids
+    condition["shopNames"] = store
+    condition["dateType"] = defaults.get("date_type_value") or TIME_TYPE_VALUE
+    condition["returnType"] = defaults.get("return_type_value") or RETURN_TYPE_VALUE
+    condition["isCkreturnrecDateSendRtmoney"] = bool(defaults.get("return_stat_flag", True))
+    condition["date"] = date_range
+    condition["olderDate"] = older_date_range
+    condition["beginDate"] = begin_date
+    condition["endDate"] = end_date
+    return payload
+
+
+def _apply_month_payload_overrides(template: dict[str, Any], *, month: str, store: str) -> dict[str, Any]:
+    payload = deepcopy(template.get("post_data_json") or {})
+    condition = ((payload.setdefault("data", {})).setdefault("condition", {}))
+    defaults = template.get("defaults") or {}
+    shop_ids = list(defaults.get("shop_ids") or condition.get("shop") or [])
+    normalized_month, month_start, month_end = _normalize_month(month)
+    today = _today()
+    current_month = today.strftime("%Y-%m")
+    if normalized_month == current_month:
+        if today.day == 1:
+            raise RuntimeError("当月利润需次日才能查询")
+        month_end = today - timedelta(days=1)
+    date_range, older_date_range, begin_date, end_date = _period_payload(month_start, month_end)
     condition["shop"] = shop_ids
     condition["shopNames"] = store
     condition["dateType"] = defaults.get("date_type_value") or TIME_TYPE_VALUE
@@ -425,10 +466,47 @@ def get_yesterday_profit() -> CommandResponse:
     return run_yesterday_profit()
 
 
-def get_month_profit() -> CommandResponse:
+def get_month_profit(*, month: str) -> CommandResponse:
+    normalized_month, _, _ = _normalize_month(month)
+    selected_store = get_config().jst_order_stats_store or STORE_NAME
+    template = _load_template()
+    scene_path = _scene_store_path(JST_SITE, PROFIT_SCENE)
+    ensure_scene_file_ready(
+        scene_path=scene_path,
+        read_scene=_read_json,
+        validate_scene=_scene_is_valid,
+        refresh_scene=learn_jst_profit_scene,
+        next_command="ops jst profit learn",
+        missing_label="利润 scene",
+        invalid_label="利润 scene",
+    )
+
+    payload = _apply_month_payload_overrides(template, month=normalized_month, store=selected_store)
+    headers = dict(template.get("headers") or {})
+    method = str(template.get("method") or "POST").upper()
+    url = str(template.get("url") or TARGET_URL)
+    with build_client(follow_redirects=True, timeout=PROFIT_REQUEST_TIMEOUT) as client:
+        response = client.request(method, url, headers=headers, json=payload)
+    parsed = _extract_json_payload(response.text)
+    profit_value = extract_profit_metric(parsed)
+    context_path = write_runtime_context(
+        task_name="jst_profit_month_run",
+        status="success",
+        inputs={"month": normalized_month, "store": selected_store, "scene": PROFIT_SCENE},
+        outputs={"profit": profit_value, "status_code": response.status_code},
+    )
     return CommandResponse(
         success=True,
         platform="jst",
         command="profit month",
-        data={"month": "current", "profit": 45678.9, "currency": "CNY", "mode": "mock"},
+        data={
+            "month": normalized_month,
+            "store": selected_store,
+            "profit": profit_value,
+            "metric_field": DEFAULT_METRIC_FIELD,
+            "scene": PROFIT_SCENE,
+            "source": "sessionhub",
+            "context_path": str(context_path),
+            "request": {"url": url, "method": method, "payload": payload},
+        },
     )
