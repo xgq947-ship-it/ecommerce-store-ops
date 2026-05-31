@@ -82,6 +82,7 @@ def test_discover_tasks_returns_all_registered_tasks() -> None:
         "tmcs_sync_jst_shop_goods",
         "jst_pickup_watch",
         "retry_queue",
+        "jst_order_invoice_workorder",
     }
     assert set(TASKS.keys()) == expected
 
@@ -94,7 +95,7 @@ def test_discover_tasks_aliases_populated() -> None:
 
 
 def test_discover_tasks_fuzzy_rules_populated() -> None:
-    assert len(FUZZY_TASK_RULES) == 12
+    assert len(FUZZY_TASK_RULES) == 13
     rule_names = {name for name, _ in FUZZY_TASK_RULES}
     assert "buyer_show" in rule_names
     assert "retry_queue" in rule_names
@@ -141,7 +142,7 @@ def test_normalize_task_text_fixes_typo() -> None:
 
 def test_task_scripts_returns_paths() -> None:
     scripts = task_scripts()
-    assert len(scripts) == 12
+    assert len(scripts) == 13
     assert scripts["buyer_show"] == PROJECT_ROOT / "tasks" / "buyer_show.py"
     assert scripts["tag_jst_brush_orders"] == PROJECT_ROOT / "tasks" / "jst_order_label" / "main.py"
 
