@@ -53,11 +53,27 @@ def run_profit_query() -> dict:
     return payload
 
 
+_WEEKDAY_CN = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+
+
 def format_message(payload: dict) -> str:
     data = payload["data"]
     profit = float(data["profit"])
     date = datetime.strptime(str(data["date"]), "%Y-%m-%d")
-    return f"{date.month}月{date.day}日猫超利润：{profit:.2f}元"
+    weekday = _WEEKDAY_CN[date.weekday()]
+    metric = data.get("metric_field", "经营利润")
+    store = data.get("store", "").replace("（肖国清）", "")
+
+    return (
+        f"💰 猫超经营利润日报\n"
+        f"\n"
+        f"📅 {date.month}月{date.day}日 {weekday}\n"
+        f"💎 {metric}\n"
+        f"\n"
+        f"     ¥{profit:,.2f}\n"
+        f"\n"
+        f"🏪 {store}"
+    )
 
 
 def send_weixin(message: str) -> dict:
