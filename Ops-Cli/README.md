@@ -13,6 +13,7 @@
   - 库存导出 / 库存调整 / 一盘货库存查询
   - 月账单下载
   - XP 工单数量读取（首页 DOM 提取）
+  - 物流履约数据概览读取（规划中）：首页 → 天机 → 商家仓履约 → 日常考核 → 数据概览
 - `jst`
   - 聚水潭认证检查
   - 商品资料导出同步
@@ -123,6 +124,15 @@ ops --json jst shop-goods import --file /path/to/jst_shop_goods_import.xlsx --sh
 - 命令会直接打开 `https://web.txcs.tmall.com/`，从首页可见文本中提取 `XP工单处理 紧急(n)`。
 - `learn` 入口仍保留兼容，但当前只返回说明：这条能力已经改成首页 DOM 读取，无需额外学习 scene。
 - `--dry-run` 只返回 `simulated=true` 占位结果，不访问页面。
+
+猫超物流履约数据概览命令（规划中，尚未实现）：
+
+- 建议命令：`ops --json tmcs fulfillment overview`
+- 平台读取路径：猫超首页 → 天机 → 商家仓履约 → 日常考核 → 数据概览
+- 该能力只负责进入页面并读取物流履约数据概览，按统一 JSON 输出考核指标、观测指标的原始数值。
+- 考核指标判断、观测指标判断、周数据预警等级判断与通知，全部留在业务层 workflow，不在 `Ops-Cli`。
+- `--dry-run` 不访问页面、不处理平台数据，只返回占位结果。
+- 进入后台、页面跳转、读取数据概览属于平台能力，必须放 `Ops-Cli`；URL、Cookie、Token、Selector、Playwright、CDP 不得外泄到业务层或文档示例。
 
 猫超账单下载当前正式链路：
 

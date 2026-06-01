@@ -77,6 +77,17 @@ run.py
 4. 优先在 `workflows/` 新增 workflow（见第 4 节规范）
 5. 旧中文命令通过 `tasks/<name>.yaml` 的 `alias` 映射到 workflow
 
+### "平台读取 + workflow 业务判断"类功能
+
+部分功能只读取平台数据，再由业务层做指标/预警判断与通知，例如规划中的**猫超物流履约监控**（workflow_id `tmcs_fulfillment_watch`，中文入口 `猫超履约监控`）。这类功能严格按下面分工落地：
+
+- 平台读取放 `Ops-Cli`：进入后台、天机/商家仓履约/日常考核页面跳转、读取「数据概览」走 `ops --json tmcs fulfillment overview`，只输出原始数值的统一 JSON。
+- 业务判断放 workflow：考核指标判断、观测指标判断、周数据预警等级判断、通知预览，全部在 `workflows/<id>/steps.py`。
+- 中文入口放 `tasks/<name>.yaml`（声明 `name / aliases / fuzzy_keywords / entrypoint`）。
+- 通知放 workflow 的 notify step，统一走 `core.runtime.send_notification(content, dry_run=ctx.dry_run)`。
+- 无风险默认不输出通知，只记录运行结果；dry-run 只预览通知内容，不真实发送、不处理平台数据。
+- workflow / tasks 内**禁止**出现猫超 URL、Cookie、Token、Selector、Playwright、CDP，也不得把平台读取逻辑写进业务层。
+
 ### 禁止的做法
 - 不新增散落的一次性脚本
 - 不绕过 WorkflowRunner 直接执行

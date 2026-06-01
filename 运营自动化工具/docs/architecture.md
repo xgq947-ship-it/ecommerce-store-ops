@@ -44,6 +44,15 @@ run.py
 - 边界与旧链路一致：业务层（`tasks/` 与 `workflows/`）都不写平台 URL / Cookie / Token / Selector / Playwright / CDP / SessionHub。
 - 细节见 [workflow runtime 说明](workflow_runtime.md)。
 
+## "平台读取 + workflow 业务判断"类功能
+
+部分功能只是读取平台数据后由业务层判断，例如规划中的猫超物流履约监控（workflow_id `tmcs_fulfillment_watch`，中文入口 `猫超履约监控`）：
+
+- 平台读取（进入后台、页面跳转、读取「数据概览」）放 `Ops-Cli`，统一走 `ops --json tmcs fulfillment overview`。
+- workflow 只负责考核指标判断、观测指标判断、周数据预警等级判断与通知预览。
+- 无风险默认不输出通知，只记录运行结果；dry-run 只预览，不发送通知、不处理平台数据。
+- 通知放 workflow 的 notify step，统一走 `send_notification`。
+
 ## 说明
 
 `sessionhub/` 已迁移到 `Ops-Cli/sessionhub`；本项目不再保存平台会话资产。

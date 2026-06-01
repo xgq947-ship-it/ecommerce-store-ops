@@ -70,6 +70,7 @@ step 化流程，入口 `python3 run.py workflow <id>`：
 - `tmcs_sku_roi` — 猫超单品 ROI 测算
 - `tmcs_sync_jst_shop_goods` — 猫超商品信息同步聚水潭店铺商品资料
 - `tmcs_xp_workorder_watch` — 猫超 XP 工单数量监控
+- `tmcs_fulfillment_watch` — 猫超物流履约监控（规划中，尚未落地实现）
 
 ## 任务与 Ops-Cli 的对应关系
 
@@ -83,6 +84,7 @@ step 化流程，入口 `python3 run.py workflow <id>`：
 - `tmcs_sync_jst_shop_goods` skill -> `ops --json tmcs stock query` + `ops --json jst shop-goods import`
 - `猫超单品ROI测算` -> 只读本地 Excel + `config/tmcs_sku_roi.json`
 - `猫超工单监控` -> `ops --json tmcs xp-workorder count`
+- `猫超履约监控` -> `ops --json tmcs fulfillment overview`（规划中）
 - `聚水潭揽收监控` -> `ops --json jst order pickup-watch --hours 48`
 
 ## 常用命令
@@ -108,6 +110,10 @@ python3 run.py workflow tmall_monthly_bill --dry-run
 python3 run.py workflow tmall_monthly_bill --month 2026-05 --dry-run
 python3 run.py workflow tmcs_sku_roi --sku-code AUXAMUZ8102R01 --dry-run
 python3 run.py workflow tmcs_xp_workorder_watch --dry-run
+python3 run.py workflow tmcs_fulfillment_watch --dry-run            # 规划中
+python3 run.py workflow tmcs_fulfillment_watch --notify --dry-run   # 规划中
+python3 run.py 猫超履约监控 --dry-run                                 # 规划中
+python3 run.py 猫超履约监控 --notify --dry-run                        # 规划中
 python3 run.py workflow append_brush_orders --dry-run
 python3 run.py workflow retry_queue --dry-run
 ```
@@ -154,6 +160,47 @@ python3 run.py workflow tmcs_xp_workorder_watch --threshold 4 --dry-run
 - `Ops-Cli` 当前直接读取猫超首页 DOM 文本中的 `XP工单处理 紧急(n)`
 - `count > threshold` 才视为超阈值
 - `--notify` 目前仍是占位，不会真正发送通知
+
+## 猫超物流履约监控（规划中，尚未落地实现）
+
+业务入口（规划）：
+
+```bash
+python3 run.py 猫超履约监控 --dry-run
+python3 run.py 猫超履约监控 --notify --dry-run
+python3 run.py workflow tmcs_fulfillment_watch --dry-run
+python3 run.py workflow tmcs_fulfillment_watch --notify --dry-run
+```
+
+功能定位：属于"平台读取 + workflow 业务判断"类型功能。
+
+- 中文入口：`猫超履约监控`，声明在 `tasks/task.yaml`（规划）。
+- workflow_id：`tmcs_fulfillment_watch`（规划）。
+- 平台读取放 `Ops-Cli`：进入猫超后台、天机、商家仓履约、日常考核、数据概览，读取物流履约数据，统一走 `ops --json tmcs fulfillment overview`。业务层不写猫超 URL、Cookie、Token、Selector、Playwright、CDP，也不把平台读取逻辑写进业务层。
+- workflow 只负责：考核指标判断、观测指标判断、周数据预警等级判断、通知预览。
+- 通知规则：指标即将触发预警时输出通知信息；无风险时默认不发送通知，只记录运行结果。
+- dry-run 只预览通知内容，不真实发送、不处理平台数据。
+- 后续如接微信/企业微信/钉钉通知，必须放在 workflow 的 notify step，并统一走 `core.runtime.send_notification(content, dry_run=ctx.dry_run)`，保证 dry-run 不发送。
+
+考核指标（要求达标）：
+
+- 24H 支揽率：（揽收时间 − 支付时间）< 24H 履约单量 / 总履约单量 × 100%，≥ 95%
+- 送货上门实际达成率：实际送货上门履约单量 / 总履约单量 × 100%，≥ 75%（强上门心智仓考核；4CP 占比 ≥ 90% 关仓时可开白）
+- 隔日达率：隔日达签收单数 / 签收单数 × 100%，≥ 隔日达率商家底线 55%（非强上门心智仓考核；4CP 占比 ≥ 90% 关仓时可开白）
+
+观测指标：
+
+- 48H 支揽率：（揽收时间 − 支付时间）< 48H 履约单量 / 总履约单量 × 100%，= 100%
+- 7CP 占比：快递使用 7CP（顺丰、丹鸟、德邦、申通、中通、圆通、韵达）单量 / 总单量 × 100%，= 100%
+- 平均支签时长：（签收时间 − 支付时间）总和 / 总签收单数
+- 表达签准率：约定送达时效内送达的履约单 / 应履约单量 × 100%，≥ 92%
+- 履约异常单反馈情况：钉钉履约助手每日推送，当天有异常单则应反馈次数记为 1 次
+
+周数据预警等级：
+
+- A 类预警：已在整改期，下月可能被关仓风险；整改期内月度数据仍有不合格
+- B 类预警：下月可能进入整改期风险；非整改期，当前月度数据有不合格
+- C 类预警：未进入正式考核期，开仓未满 1 个月；月度数据有不合格
 
 ## 猫超单品 ROI 测算
 
