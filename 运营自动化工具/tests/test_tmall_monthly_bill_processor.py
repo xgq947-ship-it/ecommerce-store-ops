@@ -266,6 +266,14 @@ def test_statement_auto_download_uses_last_month_for_full_previous_month_range(m
 
         return Result()
 
+    from datetime import date as real_date
+
+    class FakeDate(real_date):
+        @classmethod
+        def today(cls):
+            return real_date(2026, 5, 15)
+
+    monkeypatch.setattr(tmall_main, "date", FakeDate)
     monkeypatch.setattr(tmall_main, "statement_list_candidates", lambda path: [])
     monkeypatch.setattr(tmall_main, "infer_bill_periods", lambda bill_files: ["2026-04-01~2026-04-10"])
     monkeypatch.setattr(tmall_main, "infer_bill_date_range", lambda bill_files: ("2026-04-01", "2026-04-30"))
