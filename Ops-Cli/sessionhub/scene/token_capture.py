@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from .chrome_cdp import CDP_URL, bring_chrome_to_front, start_chrome
+from .chrome_cdp import CDP_URL, bring_chrome_to_front, hide_chrome, start_chrome
 from .session_store import SessionStore
 from .site_config import load_site_config, target_url_for
 
@@ -297,6 +297,9 @@ def capture_session(site: str, scene: str, wait_seconds: int = 90) -> dict[str, 
     with sync_playwright() as p:
         browser = _connect_over_cdp(p, PlaywrightError)
         context = browser.contexts[0] if browser.contexts else browser.new_context()
+        # Auto-recovery should stay in the background unless we explicitly detect
+        # that the user must handle login or another manual page action.
+        hide_chrome()
         page = context.new_page()
         context.on("request", on_request)
         try:
@@ -307,6 +310,8 @@ def capture_session(site: str, scene: str, wait_seconds: int = 90) -> dict[str, 
         if _is_login_page(current_url, login_url):
             bring_chrome_to_front()
             _progress("检测到登录页，已将专用 Chrome 切到前台，请先完成登录。")
+        else:
+            hide_chrome()
         _progress("已打开专用 Chrome 目标页面。")
         _progress("如果页面要求登录，请直接在专用 Chrome 里完成登录。")
         if auto_actions:
