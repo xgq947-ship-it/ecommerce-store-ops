@@ -47,6 +47,40 @@ def chrome_start_command() -> str:
     )
 
 
+def bring_chrome_to_front() -> tuple[bool, str]:
+    try:
+        subprocess.run(
+            [
+                "/usr/bin/osascript",
+                "-e",
+                'tell application "Google Chrome" to activate',
+            ],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return True, "已将 Chrome 切到前台"
+    except Exception as exc:
+        return False, f"切换 Chrome 到前台失败：{exc}"
+
+
+def hide_chrome() -> tuple[bool, str]:
+    try:
+        subprocess.run(
+            [
+                "/usr/bin/osascript",
+                "-e",
+                'tell application "Google Chrome" to hide',
+            ],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return True, "已将 Chrome 隐藏到后台"
+    except Exception as exc:
+        return False, f"隐藏 Chrome 失败：{exc}"
+
+
 def stop_chrome() -> tuple[bool, str]:
     try:
         result = subprocess.run(
@@ -82,35 +116,52 @@ def stop_chrome() -> tuple[bool, str]:
     return True, "已强制关闭专用 Chrome"
 
 
-def start_chrome(force: bool = False) -> tuple[bool, str]:
+def start_chrome(force: bool = False, *, foreground: bool = False) -> tuple[bool, str]:
     ok, msg = check_cdp()
     if ok and not force:
+        if foreground:
+            bring_chrome_to_front()
         return True, msg
     if force:
         stop_chrome()
     if not CHROME_BIN.exists():
         return False, f"找不到 Chrome：{CHROME_BIN}"
     PROFILE_DIR.mkdir(parents=True, exist_ok=True)
-    subprocess.Popen(
-        [
-            "/usr/bin/open",
-            "-na",
-            "Google Chrome",
-            "--args",
-            "--remote-debugging-port=9222",
-            f"--user-data-dir={PROFILE_DIR}",
-            "--no-first-run",
-            "--no-default-browser-check",
-            "--new-window",
-            "about:blank",
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
+    launch_cmd = [
+        "/usr/bin/open",
+        "-g",
+        "-na",
+        "Google Chrome",
+        "--args",
+        f"--remote-debugging-port={CDP_PORT}",
+        f"--user-data-dir={PROFILE_DIR}",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--new-window",
+        "about:blank",
+    ]
+    if foreground:
+        subprocess.Popen(
+            launch_cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    else:
+        subprocess.Popen(
+            launch_cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+        )
     for _ in range(20):
         ok, msg = check_cdp()
         if ok:
+            if foreground:
+                bring_chrome_to_front()
+            else:
+                hide_chrome()
             return True, msg
         time.sleep(0.5)
     logging.error("Chrome CDP 启动超时")

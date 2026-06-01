@@ -32,6 +32,11 @@ def test_extract_count_from_homepage_text_missing_returns_none() -> None:
     assert xp_workorder.extract_workorder_count("近1年(81)") is None
 
 
+def test_detect_tmcs_login_page() -> None:
+    assert xp_workorder._is_login_page("https://login.taobao.com/member/login.jhtml") is True
+    assert xp_workorder._is_login_page("https://web.txcs.tmall.com/") is False
+
+
 def test_count_dry_run_returns_simulated(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     (tmp_path / "runtime" / "context").mkdir(parents=True, exist_ok=True)

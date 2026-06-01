@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from .chrome_cdp import CDP_URL, start_chrome
+from .chrome_cdp import CDP_URL, bring_chrome_to_front, start_chrome
 from .session_store import SessionStore
 from .site_config import load_site_config, target_url_for
 
@@ -303,8 +303,12 @@ def capture_session(site: str, scene: str, wait_seconds: int = 90) -> dict[str, 
             page.goto(target_url, wait_until="domcontentloaded", timeout=30000)
         except PlaywrightTimeoutError:
             logging.warning("页面打开超时，继续等待用户手动刷新触发请求：%s", target_url)
+        current_url = getattr(page, "url", "") or ""
+        if _is_login_page(current_url, login_url):
+            bring_chrome_to_front()
+            _progress("检测到登录页，已将专用 Chrome 切到前台，请先完成登录。")
         _progress("已打开专用 Chrome 目标页面。")
-        _progress("如果页面要求登录，请直接在弹出的 Chrome 里完成登录。")
+        _progress("如果页面要求登录，请直接在专用 Chrome 里完成登录。")
         if auto_actions:
             _progress("登录后脚本会自动刷新页面并执行固定动作触发目标接口。")
         else:

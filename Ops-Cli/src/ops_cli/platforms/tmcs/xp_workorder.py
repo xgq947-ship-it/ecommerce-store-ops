@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 import sys
+from urllib.parse import urlparse
 from pathlib import Path
 
 from ops_cli.config import get_config
@@ -34,6 +35,15 @@ def extract_workorder_count(text: str) -> int | None:
     return int(match.group(1))
 
 
+def _is_login_page(url: str) -> bool:
+    if not url:
+        return False
+    parsed = urlparse(url)
+    text = url.lower()
+    path = (parsed.path or "").lower()
+    return "login" in text or path.startswith("/member/login")
+
+
 def _sessionhub_root() -> Path:
     return Path(get_config().sessionhub_root).expanduser().resolve()
 
@@ -44,7 +54,7 @@ def _read_homepage_text() -> str:
         sys.path.insert(0, str(root))
 
     try:
-        from scene.chrome_cdp import CDP_URL, start_chrome  # type: ignore
+        from scene.chrome_cdp import CDP_URL, bring_chrome_to_front, start_chrome  # type: ignore
     except Exception as exc:  # pragma: no cover - import path guard
         raise RuntimeError(f"无法加载 SessionHub Chrome 依赖：{exc}") from exc
 
@@ -64,13 +74,18 @@ def _read_homepage_text() -> str:
         except PlaywrightError as exc:
             raise RuntimeError(f"连接 9222 Chrome 失败：{exc}") from exc
         context = browser.contexts[0] if browser.contexts else browser.new_context()
-        page = context.new_page()
+        existing_pages = context.pages
+        created_page = not existing_pages
+        page = existing_pages[0] if existing_pages else context.new_page()
         try:
             page.goto(TMCS_HOME_URL, wait_until="domcontentloaded", timeout=30000)
             deadline_ms = 15000
             step_ms = 1000
             waited_ms = 0
             while True:
+                if _is_login_page(page.url):
+                    bring_chrome_to_front()
+                    raise RuntimeError("TMCS_LOGIN_REQUIRED：检测到猫超登录页，已切到前台，请先完成登录后重试。")
                 text = page.locator("body").inner_text(timeout=10000)
                 if extract_workorder_count(text) is not None:
                     return text
@@ -81,10 +96,11 @@ def _read_homepage_text() -> str:
                 page.wait_for_timeout(step_ms)
                 waited_ms += step_ms
         finally:
-            try:
-                page.close()
-            except Exception:
-                pass
+            if created_page:
+                try:
+                    page.close()
+                except Exception:
+                    pass
 
 
 def count_xp_workorders(
