@@ -59,7 +59,8 @@
 - `ops --json tmcs listing create`
 - `ops --json tmcs xp-workorder count`
 - `ops --json tmcs xp-workorder learn`
-- `ops --json tmcs fulfillment overview`（规划中，尚未实现）
+- `ops --json tmcs fulfillment overview`（dry-run 已落地，真实抓取待学习）
+- `ops --json tmcs fulfillment learn`
 
 已覆盖能力：
 
@@ -69,7 +70,7 @@
 - 月账单下载：`HDB` 明细、`对账单列表`
 - 推广账单下载：智多星、万象台；智多星保留平台完整资金流水 `.xlsx` 原表，万象台按页面真实返回保留 `.csv`
 - XP 工单数量读取：直接从猫超首页可见文本提取 `XP工单处理 紧急(n)`，不再依赖接口计数返回
-- 物流履约数据概览读取（规划中）：进入首页 → 天机 → 商家仓履约 → 日常考核 → 数据概览，读取物流履约相关数据
+- 物流履约数据概览读取（dry-run 已落地，真实抓取待学习）：进入首页 → 天机 → 商家仓履约 → 日常考核 → 数据概览，读取物流履约相关数据
 
 当前 TMCS 账单链路依赖的 scene：
 
@@ -91,12 +92,13 @@ XP 工单监控当前口径：
 - `learn` 入口仅保留兼容说明，不再真正沉淀 scene
 - `--dry-run` 返回 `simulated=true`
 
-猫超物流履约监控当前口径（规划中，尚未实现）：
+猫超物流履约监控当前口径（已落地；真实抓取待学习）：
 
-- 建议命令 `tmcs fulfillment overview` 只负责进入猫超后台并读取「数据概览」原始数值，统一 JSON 输出。
+- `tmcs fulfillment overview` 只负责进入猫超后台并读取「数据概览」原始数值，统一 JSON 输出（含周数据预警等级）。
 - 读取路径：首页 → 天机 → 商家仓履约 → 日常考核 → 数据概览。
 - `Ops-Cli` 只读数据，不做指标合格判断、不做预警分级、不发通知；这些全部归业务层 workflow。
-- `--dry-run` 不访问页面、不处理平台数据。
+- `--dry-run` 不访问页面、不处理平台数据，返回 `simulated=true` 占位指标。
+- 真实模式尚未学习：当前返回 `FULFILLMENT_OVERVIEW_NOT_FOUND`，`tmcs fulfillment learn` 引导后续主浏览器页面学习。
 
 `tmcs fulfillment overview` 预期返回的考核指标（业务层据此判断）：
 

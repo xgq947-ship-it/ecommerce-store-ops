@@ -52,7 +52,7 @@ CLI
 
 - `ops --json ...` 所有正式命令先进入 capability runner，再调用平台模块。
 - 交互终端下，失效 scene 可自动打开 `9222`、等待手动登录、执行配置动作、复检并只重试原操作一次。
-- "平台读取 + workflow 业务判断"类功能（如规划中的猫超物流履约监控 `tmcs fulfillment overview`）：进入后台、页面跳转、读取数据概览等读取动作一律放本层，只输出原始数值的统一 JSON；指标合格判断、预警分级、通知全部留给业务层 workflow。
+- "平台读取 + workflow 业务判断"类功能（如猫超物流履约监控 `tmcs fulfillment overview`）：进入后台、页面跳转、读取数据概览等读取动作一律放本层，只输出原始数值的统一 JSON；指标合格判断、预警分级、通知全部留给业务层 workflow。
 - `--dry-run` 与 `auth check` 仅检查当前状态，不启动浏览器、不捕获、不写业务产物。
 - 无 TTY 或 `--no-interactive-login` 失效时快速返回 `AUTH_REQUIRED`；`--interactive-login` 可强制启用交互恢复。
 - stdout 只允许一个 JSON 文档；登录提示、浏览器启动和重试过程只写 stderr 与 runtime context。

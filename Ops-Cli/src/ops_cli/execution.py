@@ -90,6 +90,12 @@ def run_capability(
 def _classify_error(exc: Exception) -> tuple[str, bool, str | None]:
     text = str(exc)
     lowered = text.lower()
+    if "FULFILLMENT_OVERVIEW_NOT_FOUND" in text:
+        return (
+            "FULFILLMENT_OVERVIEW_NOT_FOUND",
+            False,
+            "请先在主浏览器学习 天机 → 商家仓履约 → 日常考核 → 数据概览 页面后再读取履约数据。",
+        )
     if "模板" in text or "template" in lowered:
         return "TEMPLATE_MISSING", False, None
     if any(word in lowered for word in ("auth", "session", "cookie", "401", "403", "unauthorized")) or any(

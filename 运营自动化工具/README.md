@@ -47,6 +47,7 @@
 - `tmcs_sku_roi`
 - `tmcs_sync_jst_shop_goods`
 - `tmcs_xp_workorder_watch`
+- `tmcs_fulfillment_watch`
 - `jst_pickup_watch`
 - `retry_queue`
 
@@ -70,7 +71,7 @@ step 化流程，入口 `python3 run.py workflow <id>`：
 - `tmcs_sku_roi` — 猫超单品 ROI 测算
 - `tmcs_sync_jst_shop_goods` — 猫超商品信息同步聚水潭店铺商品资料
 - `tmcs_xp_workorder_watch` — 猫超 XP 工单数量监控
-- `tmcs_fulfillment_watch` — 猫超物流履约监控（规划中，尚未落地实现）
+- `tmcs_fulfillment_watch` — 猫超物流履约监控（已落地；真实页面抓取待学习）
 
 ## 任务与 Ops-Cli 的对应关系
 
@@ -84,7 +85,7 @@ step 化流程，入口 `python3 run.py workflow <id>`：
 - `tmcs_sync_jst_shop_goods` skill -> `ops --json tmcs stock query` + `ops --json jst shop-goods import`
 - `猫超单品ROI测算` -> 只读本地 Excel + `config/tmcs_sku_roi.json`
 - `猫超工单监控` -> `ops --json tmcs xp-workorder count`
-- `猫超履约监控` -> `ops --json tmcs fulfillment overview`（规划中）
+- `猫超履约监控` -> `ops --json tmcs fulfillment overview`
 - `聚水潭揽收监控` -> `ops --json jst order pickup-watch --hours 48`
 
 ## 常用命令
@@ -110,10 +111,11 @@ python3 run.py workflow tmall_monthly_bill --dry-run
 python3 run.py workflow tmall_monthly_bill --month 2026-05 --dry-run
 python3 run.py workflow tmcs_sku_roi --sku-code AUXAMUZ8102R01 --dry-run
 python3 run.py workflow tmcs_xp_workorder_watch --dry-run
-python3 run.py workflow tmcs_fulfillment_watch --dry-run            # 规划中
-python3 run.py workflow tmcs_fulfillment_watch --notify --dry-run   # 规划中
-python3 run.py 猫超履约监控 --dry-run                                 # 规划中
-python3 run.py 猫超履约监控 --notify --dry-run                        # 规划中
+python3 run.py workflow tmcs_fulfillment_watch --dry-run
+python3 run.py workflow tmcs_fulfillment_watch --warning-margin 2 --dry-run
+python3 run.py workflow tmcs_fulfillment_watch --simulate-risk --dry-run
+python3 run.py 猫超履约监控 --dry-run
+python3 run.py 猫超履约监控 --notify --dry-run
 python3 run.py workflow append_brush_orders --dry-run
 python3 run.py workflow retry_queue --dry-run
 ```
@@ -161,9 +163,9 @@ python3 run.py workflow tmcs_xp_workorder_watch --threshold 4 --dry-run
 - `count > threshold` 才视为超阈值
 - `--notify` 目前仍是占位，不会真正发送通知
 
-## 猫超物流履约监控（规划中，尚未落地实现）
+## 猫超物流履约监控（已落地；真实页面抓取待学习）
 
-业务入口（规划）：
+业务入口：
 
 ```bash
 python3 run.py 猫超履约监控 --dry-run
@@ -174,13 +176,15 @@ python3 run.py workflow tmcs_fulfillment_watch --notify --dry-run
 
 功能定位：属于"平台读取 + workflow 业务判断"类型功能。
 
-- 中文入口：`猫超履约监控`，声明在 `tasks/task.yaml`（规划）。
-- workflow_id：`tmcs_fulfillment_watch`（规划）。
+- 中文入口：`猫超履约监控`，声明在 `tasks/tmcs_fulfillment_watch.yaml`。
+- workflow_id：`tmcs_fulfillment_watch`，实现在 `workflows/tmcs_fulfillment_watch/`。
 - 平台读取放 `Ops-Cli`：进入猫超后台、天机、商家仓履约、日常考核、数据概览，读取物流履约数据，统一走 `ops --json tmcs fulfillment overview`。业务层不写猫超 URL、Cookie、Token、Selector、Playwright、CDP，也不把平台读取逻辑写进业务层。
 - workflow 只负责：考核指标判断、观测指标判断、周数据预警等级判断、通知预览。
+- 参数：`--warning-margin`（接近预警容差，默认 2）、`--notify`、`--simulate-risk`（仅 dry-run，本地风险样本预览预警）。
 - 通知规则：指标即将触发预警时输出通知信息；无风险时默认不发送通知，只记录运行结果。
-- dry-run 只预览通知内容，不真实发送、不处理平台数据。
-- 后续如接微信/企业微信/钉钉通知，必须放在 workflow 的 notify step，并统一走 `core.runtime.send_notification(content, dry_run=ctx.dry_run)`，保证 dry-run 不发送。
+- dry-run 只预览通知内容，不真实发送、不处理平台数据（平台层返回 `simulated=true`）。
+- 真实页面抓取尚未学习：真实模式下 Ops-Cli 返回 `FULFILLMENT_OVERVIEW_NOT_FOUND`，需先完成主浏览器页面学习。
+- 通知统一走 `core.runtime.send_notification(content, dry_run=ctx.dry_run)`，dry-run 保证不发送。
 
 考核指标（要求达标）：
 
@@ -288,6 +292,7 @@ python3 run.py workflow tmcs_sku_roi --sku-code AUXAMUZ8102R01 --output "/Users/
     tmcs_sku_roi/
     tmcs_sync_jst_shop_goods/
     tmcs_xp_workorder_watch/
+    tmcs_fulfillment_watch/
   skills/
   logs/
   runtime/

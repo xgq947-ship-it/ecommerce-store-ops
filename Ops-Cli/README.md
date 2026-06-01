@@ -13,7 +13,7 @@
   - 库存导出 / 库存调整 / 一盘货库存查询
   - 月账单下载
   - XP 工单数量读取（首页 DOM 提取）
-  - 物流履约数据概览读取（规划中）：首页 → 天机 → 商家仓履约 → 日常考核 → 数据概览
+  - 物流履约数据概览读取（dry-run 已落地，真实抓取待学习）：首页 → 天机 → 商家仓履约 → 日常考核 → 数据概览
 - `jst`
   - 聚水潭认证检查
   - 商品资料导出同步
@@ -125,13 +125,14 @@ ops --json jst shop-goods import --file /path/to/jst_shop_goods_import.xlsx --sh
 - `learn` 入口仍保留兼容，但当前只返回说明：这条能力已经改成首页 DOM 读取，无需额外学习 scene。
 - `--dry-run` 只返回 `simulated=true` 占位结果，不访问页面。
 
-猫超物流履约数据概览命令（规划中，尚未实现）：
+猫超物流履约数据概览命令（已落地；真实抓取待学习）：
 
-- 建议命令：`ops --json tmcs fulfillment overview`
+- 命令：`ops --json tmcs fulfillment overview`（`learn` 入口 `ops --json tmcs fulfillment learn` 引导后续页面学习）
 - 平台读取路径：猫超首页 → 天机 → 商家仓履约 → 日常考核 → 数据概览
-- 该能力只负责进入页面并读取物流履约数据概览，按统一 JSON 输出考核指标、观测指标的原始数值。
+- 该能力只负责进入页面并读取物流履约数据概览，按统一 JSON 输出考核指标、观测指标的原始数值与周数据预警等级。
 - 考核指标判断、观测指标判断、周数据预警等级判断与通知，全部留在业务层 workflow，不在 `Ops-Cli`。
-- `--dry-run` 不访问页面、不处理平台数据，只返回占位结果。
+- `--dry-run` 不访问页面、不处理平台数据，返回 `simulated=true` 的占位指标。
+- 真实抓取尚未学习：真实模式当前返回 `FULFILLMENT_OVERVIEW_NOT_FOUND`，需先在主浏览器学习页面 selector/接口并回灌 scene。
 - 进入后台、页面跳转、读取数据概览属于平台能力，必须放 `Ops-Cli`；URL、Cookie、Token、Selector、Playwright、CDP 不得外泄到业务层或文档示例。
 
 猫超账单下载当前正式链路：

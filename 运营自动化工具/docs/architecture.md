@@ -46,7 +46,7 @@ run.py
 
 ## "平台读取 + workflow 业务判断"类功能
 
-部分功能只是读取平台数据后由业务层判断，例如规划中的猫超物流履约监控（workflow_id `tmcs_fulfillment_watch`，中文入口 `猫超履约监控`）：
+部分功能只是读取平台数据后由业务层判断，例如已落地的猫超物流履约监控（workflow_id `tmcs_fulfillment_watch`，中文入口 `猫超履约监控`）：
 
 - 平台读取（进入后台、页面跳转、读取「数据概览」）放 `Ops-Cli`，统一走 `ops --json tmcs fulfillment overview`。
 - workflow 只负责考核指标判断、观测指标判断、周数据预警等级判断与通知预览。

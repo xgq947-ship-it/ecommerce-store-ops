@@ -14,6 +14,10 @@ from ops_cli.platforms.tmcs.inventory import (
     run_inventory_adjust,
     run_inventory_export,
 )
+from ops_cli.platforms.tmcs.fulfillment import (
+    learn_fulfillment_overview,
+    run_fulfillment_overview,
+)
 from ops_cli.platforms.tmcs.listing import create_listing
 from ops_cli.platforms.tmcs.product import learn_product_sync, list_products, run_product_sync
 from ops_cli.platforms.tmcs.promotion_bill import learn_promotion_bill, run_promotion_bill_download
@@ -35,6 +39,7 @@ def register(app: typer.Typer, capabilities: dict[str, CapabilitySpec]) -> None:
     tmcs_promotion_bill_app = typer.Typer(help="TMCS promotion bill commands.", no_args_is_help=True)
     tmcs_listing_app = typer.Typer(help="TMCS listing commands.", no_args_is_help=True)
     tmcs_xp_workorder_app = typer.Typer(help="TMCS XP workorder commands.", no_args_is_help=True)
+    tmcs_fulfillment_app = typer.Typer(help="TMCS fulfillment commands.", no_args_is_help=True)
 
     # --- Auth ---
 
@@ -305,6 +310,34 @@ def register(app: typer.Typer, capabilities: dict[str, CapabilitySpec]) -> None:
             handler=lambda: learn_xp_workorder_count(force=force),
         )
 
+    # --- Fulfillment ---
+
+    @tmcs_fulfillment_app.command("overview")
+    def tmcs_fulfillment_overview(
+        ctx: typer.Context,
+        dry_run: bool = typer.Option(
+            False, "--dry-run", help="不访问页面、不处理平台数据，返回模拟履约指标。"
+        ),
+    ) -> None:
+        _execute(
+            ctx,
+            command_name="ops tmcs fulfillment overview",
+            params={"dry_run": dry_run},
+            handler=lambda: run_fulfillment_overview(dry_run=dry_run),
+        )
+
+    @tmcs_fulfillment_app.command("learn")
+    def tmcs_fulfillment_learn(
+        ctx: typer.Context,
+        force: bool = typer.Option(False, "--force", help="即使 scene 存在也重新捕获。"),
+    ) -> None:
+        _execute(
+            ctx,
+            command_name="ops tmcs fulfillment learn",
+            params={"force": force},
+            handler=lambda: learn_fulfillment_overview(force=force),
+        )
+
     # --- Wire up Typer hierarchy ---
 
     tmcs_app.add_typer(tmcs_auth_app, name="auth")
@@ -315,6 +348,7 @@ def register(app: typer.Typer, capabilities: dict[str, CapabilitySpec]) -> None:
     tmcs_app.add_typer(tmcs_promotion_bill_app, name="promotion-bill")
     tmcs_app.add_typer(tmcs_listing_app, name="listing")
     tmcs_app.add_typer(tmcs_xp_workorder_app, name="xp-workorder")
+    tmcs_app.add_typer(tmcs_fulfillment_app, name="fulfillment")
 
     # --- Register capabilities ---
 
@@ -346,6 +380,19 @@ def register(app: typer.Typer, capabilities: dict[str, CapabilitySpec]) -> None:
             platform="tmcs",
             command="xp-workorder learn",
             scenes=("xp_workorder_count",),
+            recovery_policy="explicit",
+        ),
+        CapabilitySpec(
+            id="tmcs.fulfillment.overview",
+            platform="tmcs",
+            command="fulfillment overview",
+            scenes=("fulfillment_overview",),
+        ),
+        CapabilitySpec(
+            id="tmcs.fulfillment.learn",
+            platform="tmcs",
+            command="fulfillment learn",
+            scenes=("fulfillment_overview",),
             recovery_policy="explicit",
         ),
     ]:
