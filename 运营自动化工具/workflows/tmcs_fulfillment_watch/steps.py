@@ -25,12 +25,6 @@ GE_THRESHOLDS: dict[str, float] = {
     "pickup_24h_rate": 95.0,
     "door_delivery_rate": 75.0,
     "next_day_delivery_rate": 55.0,
-    "delivery_promise_rate": 92.0,
-}
-
-# 要求"必须等于 100"的指标。
-FULL_THRESHOLDS: dict[str, float] = {
-    "pickup_48h_rate": 100.0,
 }
 
 # 只记录、不自动预警的观测指标（平均支签时长、4CP 占比无明确达标线）。
@@ -57,8 +51,8 @@ SIMULATED_RISK_METRICS: dict[str, Any] = {
     "pickup_24h_rate": 93.0,        # 不合格
     "door_delivery_rate": 76.0,     # 接近预警
     "next_day_delivery_rate": 54.0, # 不合格
-    "pickup_48h_rate": 99.5,        # 不合格（未达 100）
-    "delivery_promise_rate": 91.0,  # 不合格
+    "pickup_48h_rate": 99.5,        # 仅记录，不触发预警
+    "delivery_promise_rate": 91.0,  # 仅记录，不触发预警
     "four_cp_rate": 88.0,           # 只记录
     "four_cp_rate_ex_remote": 88.0, # 只记录
     "avg_pay_to_sign_hours": 50.0,  # 只记录
@@ -70,8 +64,6 @@ DISPLAY_PRIORITY: dict[str, int] = {
     "pickup_24h_rate": 10,
     "door_delivery_rate": 20,
     "next_day_delivery_rate": 30,
-    "pickup_48h_rate": 40,
-    "delivery_promise_rate": 50,
     "weekly_warning_level": 60,
     "exception_feedback_required": 999,
 }
@@ -169,22 +161,6 @@ def evaluate_metrics(ctx: StepContext):
                 "severity": severity,
             }
         )
-
-    for key, threshold in FULL_THRESHOLDS.items():
-        if key not in metrics or metrics[key] is None:
-            continue
-        value = float(metrics[key])
-        if value < threshold:
-            risk_items.append(
-                {
-                    "metric": key,
-                    "label": METRIC_LABELS.get(key, key),
-                    "value": value,
-                    "threshold": threshold,
-                    "requirement": "=100",
-                    "severity": "fail",
-                }
-            )
 
     if metrics.get("exception_feedback_required"):
         risk_items.append(

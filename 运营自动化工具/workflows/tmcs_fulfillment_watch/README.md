@@ -30,10 +30,10 @@ python3 run.py 猫超履约监控 --warning-margin 2 --dry-run
 2. `fetch_fulfillment_overview` — 调 `ops --json tmcs fulfillment overview`，校验 `metrics`；
    dry-run + `--simulate-risk` 时用本地风险样本覆盖。Ops-Cli 失败返回清晰错误。
 3. `evaluate_metrics` — 指标判断，产出 `risk_items`：
-   - 考核/观测「≥阈值」类（24H支揽率≥95、送货上门≥75、隔日达≥55、表达签准≥92）：
+   - 只对三个核心指标做预警：24H支揽率≥95、送货上门≥75、隔日达≥55。
+   - 考核/观测「≥阈值」类：
      `值 < 阈值` → `fail`；`阈值 ≤ 值 ≤ 阈值 + margin` → `near`。
-   - 「=100」类（48H支揽率）：`值 < 100` → `fail`。
-   - 4CP占比 / 4CP占比_剔偏远 / 支签时长：观测/记录项，默认不预警。
+   - 48H支揽率 / 表达签准率 / 4CP占比 / 4CP占比_剔偏远 / 支签时长：观测/记录项，默认不预警。
    - `平均支签时长`：只记录，不预警。
    - `履约异常单反馈`：当天有异常单（`exception_feedback_required=true`）→ `action`。
    - `周数据预警等级`（A/B/C，来自平台）非空 → `weekly`。

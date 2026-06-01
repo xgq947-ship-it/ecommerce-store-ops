@@ -147,14 +147,14 @@ def test_next_day_below_threshold_fails(monkeypatch, tmp_path: Path) -> None:
     assert risks["next_day_delivery_rate"]["severity"] == "fail"
 
 
-# 7. 48H支揽率低于 100 触发风险
-def test_pickup_48h_below_full_fails(monkeypatch, tmp_path: Path) -> None:
+# 7. 48H支揽率不再触发风险，只保留前三个核心指标预警
+def test_pickup_48h_is_not_alert_metric(monkeypatch, tmp_path: Path) -> None:
     run, _, _, runner = _run(
         monkeypatch, tmp_path, args=[], dry_run=False,
         payload=_payload(_metrics(pickup_48h_rate=99.5)),
     )
     risks = _risk_metrics(runner)
-    assert risks["pickup_48h_rate"]["severity"] == "fail"
+    assert "pickup_48h_rate" not in risks
 
 
 # 8. 4CP占比为观测/记录项：偏低不触发风险（按真实页面口径，4CP 无硬达标线）
@@ -168,14 +168,14 @@ def test_four_cp_is_record_only(monkeypatch, tmp_path: Path) -> None:
     assert "four_cp_rate_ex_remote" not in risks
 
 
-# 9. 表达签准率低于 92 触发风险
-def test_delivery_promise_below_threshold_fails(monkeypatch, tmp_path: Path) -> None:
+# 9. 表达签准率不再触发风险，只保留前三个核心指标预警
+def test_delivery_promise_is_not_alert_metric(monkeypatch, tmp_path: Path) -> None:
     run, _, _, runner = _run(
         monkeypatch, tmp_path, args=[], dry_run=False,
         payload=_payload(_metrics(delivery_promise_rate=90.0)),
     )
     risks = _risk_metrics(runner)
-    assert risks["delivery_promise_rate"]["severity"] == "fail"
+    assert "delivery_promise_rate" not in risks
 
 
 # 10. 全部正常时 should_notify=false，且不发送通知
@@ -249,6 +249,31 @@ def test_exception_feedback_hidden_from_warning_message(monkeypatch, tmp_path: P
     assert "送货上门率" not in message
     assert "履约异常单反馈" not in message
     assert message.index("周数据预警等级：B 类") < message.index("24H支揽率")
+
+
+def test_only_three_core_metrics_appear_in_warning_message(monkeypatch, tmp_path: Path) -> None:
+    run, _, _, runner = _run(
+        monkeypatch, tmp_path, args=["--notify"], dry_run=False,
+        payload=_payload(
+            _metrics(
+                pickup_24h_rate=93.0,
+                door_delivery_rate=74.0,
+                next_day_delivery_rate=54.0,
+                pickup_48h_rate=99.5,
+                delivery_promise_rate=90.0,
+                exception_feedback_required=True,
+            ),
+            weekly="B",
+        ),
+    )
+    assert run.status == "success"
+    message = _step_outputs(runner, "build_warning_message")["warning_message"]
+    assert "24H支揽率" in message
+    assert "送货上门率" in message
+    assert "隔日达率" in message
+    assert "48H支揽率" not in message
+    assert "表达签准率" not in message
+    assert "履约异常单反馈" not in message
 
 
 def test_exception_feedback_only_does_not_notify(monkeypatch, tmp_path: Path) -> None:
