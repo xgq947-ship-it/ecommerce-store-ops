@@ -111,7 +111,7 @@ python3 run.py artifacts --month 2026-05
 - `tmcs_sku_roi`
 - `tmcs_sync_jst_shop_goods`
 - `tmcs_xp_workorder_watch`
-- `tmcs_fulfillment_watch` — 猫超物流履约监控。属"平台读取 + workflow 业务判断"类型：平台读取走 `ops --json tmcs fulfillment overview`（沉在 `Ops-Cli`），workflow 只做考核/观测指标判断、周数据预警分级与通知预览；无风险默认不输出通知，dry-run 只预览不发送、不处理平台数据；通知放 notify step 统一走 `send_notification`。中文入口 `猫超履约监控`。真实页面抓取尚未学习，真实模式下 Ops-Cli 返回 `FULFILLMENT_OVERVIEW_NOT_FOUND`。
+- `tmcs_fulfillment_watch` — 猫超物流履约监控（已真实跑通）。属"平台读取 + workflow 业务判断"类型：平台读取走 `ops --json tmcs fulfillment overview`（沉在 `Ops-Cli`，9222 + Playwright 读「日常考核」页），workflow 只做考核/观测指标判断、周数据预警透传与通知预览；无风险默认不输出通知，dry-run 只预览不发送、不处理平台数据；通知放 notify step 统一走 `send_notification`。中文入口 `猫超履约监控`。
 
 ## step 怎么写
 

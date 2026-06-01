@@ -71,7 +71,7 @@ step 化流程，入口 `python3 run.py workflow <id>`：
 - `tmcs_sku_roi` — 猫超单品 ROI 测算
 - `tmcs_sync_jst_shop_goods` — 猫超商品信息同步聚水潭店铺商品资料
 - `tmcs_xp_workorder_watch` — 猫超 XP 工单数量监控
-- `tmcs_fulfillment_watch` — 猫超物流履约监控（已落地；真实页面抓取待学习）
+- `tmcs_fulfillment_watch` — 猫超物流履约监控（已真实跑通）
 
 ## 任务与 Ops-Cli 的对应关系
 
@@ -163,11 +163,12 @@ python3 run.py workflow tmcs_xp_workorder_watch --threshold 4 --dry-run
 - `count > threshold` 才视为超阈值
 - `--notify` 目前仍是占位，不会真正发送通知
 
-## 猫超物流履约监控（已落地；真实页面抓取待学习）
+## 猫超物流履约监控（已真实跑通）
 
 业务入口：
 
 ```bash
+python3 run.py 猫超履约监控                      # 真实读取 9222 日常考核页
 python3 run.py 猫超履约监控 --dry-run
 python3 run.py 猫超履约监控 --notify --dry-run
 python3 run.py workflow tmcs_fulfillment_watch --dry-run
@@ -178,27 +179,31 @@ python3 run.py workflow tmcs_fulfillment_watch --notify --dry-run
 
 - 中文入口：`猫超履约监控`，声明在 `tasks/tmcs_fulfillment_watch.yaml`。
 - workflow_id：`tmcs_fulfillment_watch`，实现在 `workflows/tmcs_fulfillment_watch/`。
-- 平台读取放 `Ops-Cli`：进入猫超后台、天机、商家仓履约、日常考核、数据概览，读取物流履约数据，统一走 `ops --json tmcs fulfillment overview`。业务层不写猫超 URL、Cookie、Token、Selector、Playwright、CDP，也不把平台读取逻辑写进业务层。
-- workflow 只负责：考核指标判断、观测指标判断、周数据预警等级判断、通知预览。
+- 平台读取放 `Ops-Cli`：9222 + Playwright 进入猫超后台、商仓履约（天机）、物流履约、日常考核、数据概览，读取物流履约数据，统一走 `ops --json tmcs fulfillment overview`。业务层不写猫超 URL、Cookie、Token、Selector、Playwright、CDP，也不把平台读取逻辑写进业务层。
+- workflow 只负责：考核指标判断、观测指标判断、周数据预警等级透传、通知预览。
 - 参数：`--warning-margin`（接近预警容差，默认 2）、`--notify`、`--simulate-risk`（仅 dry-run，本地风险样本预览预警）。
 - 通知规则：指标即将触发预警时输出通知信息；无风险时默认不发送通知，只记录运行结果。
 - dry-run 只预览通知内容，不真实发送、不处理平台数据（平台层返回 `simulated=true`）。
-- 真实页面抓取尚未学习：真实模式下 Ops-Cli 返回 `FULFILLMENT_OVERVIEW_NOT_FOUND`，需先完成主浏览器页面学习。
+- 真实模式：Ops-Cli 直接读「日常考核」页并返回真实指标 + 周预警等级（A/B/C）；解析不到时返回 `FULFILLMENT_OVERVIEW_NOT_FOUND`。
 - 通知统一走 `core.runtime.send_notification(content, dry_run=ctx.dry_run)`，dry-run 保证不发送。
 
-考核指标（要求达标）：
+考核指标（要求达标，按真实日常考核页口径）：
 
-- 24H 支揽率：（揽收时间 − 支付时间）< 24H 履约单量 / 总履约单量 × 100%，≥ 95%
-- 送货上门实际达成率：实际送货上门履约单量 / 总履约单量 × 100%，≥ 75%（强上门心智仓考核；4CP 占比 ≥ 90% 关仓时可开白）
-- 隔日达率：隔日达签收单数 / 签收单数 × 100%，≥ 隔日达率商家底线 55%（非强上门心智仓考核；4CP 占比 ≥ 90% 关仓时可开白）
+- 24H 支揽率（T+2）：≥ 95%
+- 48H 支揽率（T+3）：= 100%
+- 送货上门率：≥ 75%（强上门心智仓考核；4CP 占比 ≥ 90% 关仓时可开白）
+- 隔日达率：≥ 隔日达率商家底线 55%（非强上门心智仓考核）
+- 表达签准率：≥ 92%（不在日常考核默认卡片时为 null）
 
-观测指标：
+观测 / 记录指标（默认只记录，不自动预警）：
 
-- 48H 支揽率：（揽收时间 − 支付时间）< 48H 履约单量 / 总履约单量 × 100%，= 100%
-- 7CP 占比：快递使用 7CP（顺丰、丹鸟、德邦、申通、中通、圆通、韵达）单量 / 总单量 × 100%，= 100%
-- 平均支签时长：（签收时间 − 支付时间）总和 / 总签收单数
-- 表达签准率：约定送达时效内送达的履约单 / 应履约单量 × 100%，≥ 92%
-- 履约异常单反馈情况：钉钉履约助手每日推送，当天有异常单则应反馈次数记为 1 次
+- 4CP 占比 / 4CP 占比_剔偏远（真实页面为 4CP，非 7CP）
+- 支签时长（小时）（不在日常考核默认卡片时为 null）
+
+其它：
+
+- 履约异常单反馈：异常单据 > 0 即标记需反馈（severity=action）
+- 周数据预警等级：A / B / C，来自「考核表现」横幅（severity=weekly）
 
 周数据预警等级：
 

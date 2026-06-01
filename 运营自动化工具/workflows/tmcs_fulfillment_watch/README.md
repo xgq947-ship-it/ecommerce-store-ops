@@ -32,7 +32,8 @@ python3 run.py 猫超履约监控 --warning-margin 2 --dry-run
 3. `evaluate_metrics` — 指标判断，产出 `risk_items`：
    - 考核/观测「≥阈值」类（24H支揽率≥95、送货上门≥75、隔日达≥55、表达签准≥92）：
      `值 < 阈值` → `fail`；`阈值 ≤ 值 ≤ 阈值 + margin` → `near`。
-   - 「=100」类（48H支揽率、7CP占比）：`值 < 100` → `fail`。
+   - 「=100」类（48H支揽率）：`值 < 100` → `fail`。
+   - 4CP占比 / 4CP占比_剔偏远 / 支签时长：观测/记录项，默认不预警。
    - `平均支签时长`：只记录，不预警。
    - `履约异常单反馈`：当天有异常单（`exception_feedback_required=true`）→ `action`。
    - `周数据预警等级`（A/B/C，来自平台）非空 → `weekly`。
@@ -55,5 +56,6 @@ python3 run.py 猫超履约监控 --warning-margin 2 --dry-run
 
 ## 边界
 
-平台访问、SessionHub、CDP、Selector、平台 URL 全在 Ops-Cli。真实页面抓取尚未学习，
-真实模式由 Ops-Cli 返回 `FULFILLMENT_OVERVIEW_NOT_FOUND`，需先完成主浏览器页面学习。
+平台访问、SessionHub、CDP、Selector、平台 URL 全在 Ops-Cli。真实模式已跑通：Ops-Cli
+用 9222 + Playwright 读「日常考核」页卡片与「考核表现」横幅（含周预警等级）；解析不到时
+返回 `FULFILLMENT_OVERVIEW_NOT_FOUND`。指标按真实页面口径为 4CP 占比（非 7CP）。

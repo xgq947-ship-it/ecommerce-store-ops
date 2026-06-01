@@ -20,7 +20,7 @@ from core.runtime import StepContext, failure_result, send_notification, success
 
 DEFAULT_WARNING_MARGIN = 2.0
 
-# 考核 / 观测指标：要求"达到或超过阈值"。
+# 考核 / 观测指标：要求"达到或超过阈值"（按真实日常考核页口径）。
 GE_THRESHOLDS: dict[str, float] = {
     "pickup_24h_rate": 95.0,
     "door_delivery_rate": 75.0,
@@ -31,17 +31,24 @@ GE_THRESHOLDS: dict[str, float] = {
 # 要求"必须等于 100"的指标。
 FULL_THRESHOLDS: dict[str, float] = {
     "pickup_48h_rate": 100.0,
-    "seven_cp_rate": 100.0,
 }
+
+# 只记录、不自动预警的观测指标（平均支签时长、4CP 占比无明确达标线）。
+RECORD_ONLY_KEYS: tuple[str, ...] = (
+    "avg_pay_to_sign_hours",
+    "four_cp_rate",
+    "four_cp_rate_ex_remote",
+)
 
 METRIC_LABELS: dict[str, str] = {
     "pickup_24h_rate": "24H支揽率",
-    "door_delivery_rate": "送货上门实际达成率",
+    "door_delivery_rate": "送货上门率",
     "next_day_delivery_rate": "隔日达率",
     "delivery_promise_rate": "表达签准率",
     "pickup_48h_rate": "48H支揽率",
-    "seven_cp_rate": "7CP占比",
-    "avg_pay_to_sign_hours": "平均支签时长",
+    "four_cp_rate": "4CP占比",
+    "four_cp_rate_ex_remote": "4CP占比_剔偏远",
+    "avg_pay_to_sign_hours": "支签时长(小时)",
     "exception_feedback_required": "履约异常单反馈",
 }
 
@@ -51,12 +58,23 @@ SIMULATED_RISK_METRICS: dict[str, Any] = {
     "door_delivery_rate": 76.0,     # 接近预警
     "next_day_delivery_rate": 54.0, # 不合格
     "pickup_48h_rate": 99.5,        # 不合格（未达 100）
-    "seven_cp_rate": 98.0,          # 不合格（未达 100）
-    "avg_pay_to_sign_hours": 50.0,  # 只记录
     "delivery_promise_rate": 91.0,  # 不合格
+    "four_cp_rate": 88.0,           # 只记录
+    "four_cp_rate_ex_remote": 88.0, # 只记录
+    "avg_pay_to_sign_hours": 50.0,  # 只记录
     "exception_feedback_required": True,
 }
 SIMULATED_RISK_WEEKLY_LEVEL = "B"
+
+DISPLAY_PRIORITY: dict[str, int] = {
+    "pickup_24h_rate": 10,
+    "door_delivery_rate": 20,
+    "next_day_delivery_rate": 30,
+    "pickup_48h_rate": 40,
+    "delivery_promise_rate": 50,
+    "weekly_warning_level": 60,
+    "exception_feedback_required": 999,
+}
 
 
 def _parse_flags(ctx: StepContext) -> argparse.Namespace:
@@ -192,12 +210,15 @@ def evaluate_metrics(ctx: StepContext):
             }
         )
 
-    should_notify = bool(risk_items)
+    visible_risk_items = [item for item in risk_items if item["metric"] != "exception_feedback_required"]
+    should_notify = bool(visible_risk_items)
     ctx.state["risk_items"] = risk_items
+    ctx.state["visible_risk_items"] = visible_risk_items
     ctx.state["should_notify"] = should_notify
     return success_result(
         outputs={
             "risk_items": risk_items,
+            "visible_risk_items": visible_risk_items,
             "weekly_warning_level": weekly_warning_level,
             "should_notify": should_notify,
             "avg_pay_to_sign_hours": metrics.get("avg_pay_to_sign_hours"),
@@ -206,32 +227,29 @@ def evaluate_metrics(ctx: StepContext):
 
 
 def build_warning_message(ctx: StepContext):
-    risk_items = ctx.state.get("risk_items") or []
+    risk_items = ctx.state.get("visible_risk_items") or []
     weekly_warning_level = ctx.state.get("weekly_warning_level")
     if not risk_items:
         ctx.state["warning_message"] = ""
         return success_result(outputs={"warning_message": "", "has_warning": False})
 
+    sorted_items = sorted(
+        risk_items,
+        key=lambda item: DISPLAY_PRIORITY.get(item["metric"], 100),
+    )
     lines = ["【猫超物流履约监控预警】"]
     if weekly_warning_level:
         lines.append(f"周数据预警等级：{weekly_warning_level} 类")
-    for item in risk_items:
+    for item in sorted_items:
         if item["metric"] == "weekly_warning_level":
             continue
         if item["severity"] == "fail":
             tag = "不合格"
         elif item["severity"] == "near":
             tag = "接近预警"
-        elif item["severity"] == "action":
-            tag = "需反馈"
         else:
             tag = "风险"
-        if item["threshold"] is None:
-            lines.append(f"- {item['label']}：{item['value']}（{tag}，要求 {item['requirement']}）")
-        else:
-            lines.append(
-                f"- {item['label']}：{item['value']}（{tag}，要求 {item['requirement']}）"
-            )
+        lines.append(f"- {item['label']}：{item['value']}（{tag}，要求 {item['requirement']}）")
     message = "\n".join(lines)
     ctx.state["warning_message"] = message
     return success_result(outputs={"warning_message": message, "has_warning": True})

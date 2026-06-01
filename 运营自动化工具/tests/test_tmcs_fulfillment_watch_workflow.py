@@ -13,13 +13,14 @@ from workflows.tmcs_fulfillment_watch.workflow import build_workflow
 
 def _metrics(**overrides) -> dict:
     base = {
-        "pickup_24h_rate": 96.2,
-        "door_delivery_rate": 78.5,
-        "next_day_delivery_rate": 58.0,
+        "pickup_24h_rate": 99.43,
         "pickup_48h_rate": 100.0,
-        "seven_cp_rate": 100.0,
-        "avg_pay_to_sign_hours": 36.5,
-        "delivery_promise_rate": 93.1,
+        "door_delivery_rate": 92.59,
+        "next_day_delivery_rate": 58.0,
+        "four_cp_rate": 99.47,
+        "four_cp_rate_ex_remote": 99.46,
+        "delivery_promise_rate": 100.0,
+        "avg_pay_to_sign_hours": 55.9,
         "exception_feedback_required": False,
     }
     base.update(overrides)
@@ -156,14 +157,15 @@ def test_pickup_48h_below_full_fails(monkeypatch, tmp_path: Path) -> None:
     assert risks["pickup_48h_rate"]["severity"] == "fail"
 
 
-# 8. 7CP占比低于 100 触发风险
-def test_seven_cp_below_full_fails(monkeypatch, tmp_path: Path) -> None:
+# 8. 4CP占比为观测/记录项：偏低不触发风险（按真实页面口径，4CP 无硬达标线）
+def test_four_cp_is_record_only(monkeypatch, tmp_path: Path) -> None:
     run, _, _, runner = _run(
         monkeypatch, tmp_path, args=[], dry_run=False,
-        payload=_payload(_metrics(seven_cp_rate=98.0)),
+        payload=_payload(_metrics(four_cp_rate=85.0, four_cp_rate_ex_remote=85.0)),
     )
     risks = _risk_metrics(runner)
-    assert risks["seven_cp_rate"]["severity"] == "fail"
+    assert "four_cp_rate" not in risks
+    assert "four_cp_rate_ex_remote" not in risks
 
 
 # 9. 表达签准率低于 92 触发风险
@@ -227,6 +229,39 @@ def test_dry_run_does_not_invoke_subprocess(monkeypatch, tmp_path: Path) -> None
         payload=_payload(_metrics(), dry_run=True, simulated=True),
     )
     assert run.status == "dry_run_success"
+
+
+def test_exception_feedback_hidden_from_warning_message(monkeypatch, tmp_path: Path) -> None:
+    run, _, _, runner = _run(
+        monkeypatch, tmp_path, args=["--notify"], dry_run=False,
+        payload=_payload(
+            _metrics(
+                pickup_24h_rate=93.0,
+                exception_feedback_required=True,
+            ),
+            weekly="B",
+        ),
+    )
+    assert run.status == "success"
+    out = _step_outputs(runner, "build_warning_message")
+    message = out["warning_message"]
+    assert "24H支揽率" in message
+    assert "送货上门率" not in message
+    assert "履约异常单反馈" not in message
+    assert message.index("周数据预警等级：B 类") < message.index("24H支揽率")
+
+
+def test_exception_feedback_only_does_not_notify(monkeypatch, tmp_path: Path) -> None:
+    run, _, sent, runner = _run(
+        monkeypatch, tmp_path, args=["--notify"], dry_run=False,
+        payload=_payload(_metrics(exception_feedback_required=True)),
+    )
+    assert run.status == "success"
+    warning = _step_outputs(runner, "build_warning_message")
+    out = _step_outputs(runner, "collect_outputs")
+    assert warning["warning_message"] == ""
+    assert out["should_notify"] is False
+    assert sent == []
 
 
 # 12. Ops-Cli JSON 结构正确（metrics/weekly/source 透传）
