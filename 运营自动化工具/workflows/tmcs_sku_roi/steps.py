@@ -9,14 +9,16 @@ from core.runtime import Artifact, StepContext, failure_result, success_result
 from workflows.tmcs_sku_roi.excel_lookup import (
     find_jst_product,
     find_tmcs_barcode,
+    load_roi_config,
     write_result_excel,
     write_result_json,
 )
-from workflows.tmcs_sku_roi.roi_calculator import DEFAULT_ROI_CONFIG, calculate_roi as calculate_roi_value
+from workflows.tmcs_sku_roi.roi_calculator import calculate_roi as calculate_roi_value
 
 
 DEFAULT_TMCS_FILE = get_path("tmall_goods_master_file")
 DEFAULT_JST_FILE = get_path("jst_product_master_file")
+DEFAULT_ROI_CONFIG_FILE = get_path("project_root") / "config" / "tmcs_sku_roi.json"
 
 
 def _parse_flags(ctx: StepContext) -> argparse.Namespace:
@@ -27,6 +29,7 @@ def _parse_flags(ctx: StepContext) -> argparse.Namespace:
     parser.add_argument("--output", default=None)
     parser.add_argument("--tmcs-file", default=str(DEFAULT_TMCS_FILE))
     parser.add_argument("--jst-file", default=str(DEFAULT_JST_FILE))
+    parser.add_argument("--roi-config", default=str(DEFAULT_ROI_CONFIG_FILE))
     namespace, _ = parser.parse_known_args(ctx.inputs.get("args") or [])
     namespace.dry_run = ctx.dry_run or namespace.dry_run
     return namespace
@@ -45,15 +48,20 @@ def check_inputs(ctx: StepContext):
 
     tmcs_file = Path(flags.tmcs_file).expanduser()
     jst_file = Path(flags.jst_file).expanduser()
-    missing = [str(path) for path in (tmcs_file, jst_file) if not path.exists()]
+    roi_config_file = Path(flags.roi_config).expanduser()
+    missing = [str(path) for path in (tmcs_file, jst_file, roi_config_file) if not path.exists()]
     if missing:
         return failure_result([f"文件不存在：{path}" for path in missing])
 
-    config = dict(DEFAULT_ROI_CONFIG)
+    try:
+        config = load_roi_config(roi_config_file)
+    except ValueError as exc:
+        return failure_result(str(exc))
 
     ctx.state["flags"] = flags
     ctx.state["tmcs_file"] = tmcs_file
     ctx.state["jst_file"] = jst_file
+    ctx.state["roi_config_file"] = roi_config_file
     ctx.state["roi_config"] = config
     return success_result()
 

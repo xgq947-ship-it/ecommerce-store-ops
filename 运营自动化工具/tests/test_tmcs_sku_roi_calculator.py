@@ -13,7 +13,25 @@ from workflows.tmcs_sku_roi.roi_calculator import calculate_roi
 
 
 def test_calculate_roi_returns_three_values() -> None:
-    result = calculate_roi(799, 361)
+    result = calculate_roi(
+        799,
+        361,
+        config={
+            "supply_price_factor": 0.9,
+            "vip_discount_rate": 0.0,
+            "general_fee_rate": 0.007,
+            "other_fee_rate": 0.02,
+            "storage_fee_rate": 0.0,
+            "tax_rate": 0.03,
+            "management_fee_rate": 0.048,
+            "refund_rate": 0.1,
+            "refund_flat_fee": 5.0,
+            "domestic_shipping_fee": 5.0,
+            "gift_cost": 0.0,
+            "safe_profit_rate": 0.1,
+            "ideal_promotion_ratio": 0.12,
+        },
+    )
 
     assert result["break_even_roi"] is not None
     assert result["safe_roi"] is not None

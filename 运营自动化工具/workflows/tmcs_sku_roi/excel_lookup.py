@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
@@ -7,6 +8,21 @@ from openpyxl import Workbook, load_workbook
 
 TMCS_REQUIRED_HEADERS = ("商品编码", "SKU编码", "条码")
 JST_REQUIRED_HEADERS = ("商品编码", "淘系控价", "成本价")
+ROI_CONFIG_REQUIRED_KEYS = (
+    "supply_price_factor",
+    "vip_discount_rate",
+    "general_fee_rate",
+    "other_fee_rate",
+    "storage_fee_rate",
+    "tax_rate",
+    "management_fee_rate",
+    "refund_rate",
+    "refund_flat_fee",
+    "domestic_shipping_fee",
+    "gift_cost",
+    "safe_profit_rate",
+    "ideal_promotion_ratio",
+)
 
 
 def _normalize_header(value) -> str:
@@ -122,9 +138,35 @@ def find_jst_product(path: Path, barcode_as_product_code: str) -> dict[str, floa
     return match
 
 
-def write_result_json(path: Path, payload: dict) -> Path:
-    import json
+def load_roi_config(path: Path) -> dict[str, float]:
+    if not path.exists():
+        raise ValueError(f"ROI 配置文件不存在：{path}")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"ROI 配置文件不是合法 JSON：{path}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f"ROI 配置文件格式错误，顶层必须是对象：{path}")
 
+    missing = [key for key in ROI_CONFIG_REQUIRED_KEYS if key not in payload]
+    if missing:
+        raise ValueError(f"ROI 配置文件缺少字段：{', '.join(missing)}")
+
+    config: dict[str, float] = {}
+    for key in ROI_CONFIG_REQUIRED_KEYS:
+        raw_value = payload[key]
+        if not isinstance(raw_value, (int, float)):
+            raise ValueError(f"ROI 配置字段必须是数字：{key}={raw_value}")
+        value = float(raw_value)
+        if key in {"supply_price_factor", "safe_profit_rate", "ideal_promotion_ratio"} and value <= 0:
+            raise ValueError(f"ROI 配置字段必须大于 0：{key}={raw_value}")
+        if key not in {"supply_price_factor", "safe_profit_rate", "ideal_promotion_ratio"} and value < 0:
+            raise ValueError(f"ROI 配置字段不能小于 0：{key}={raw_value}")
+        config[key] = value
+    return config
+
+
+def write_result_json(path: Path, payload: dict) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return path
