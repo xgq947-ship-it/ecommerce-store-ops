@@ -18,6 +18,11 @@ from ops_cli.platforms.tmcs.listing import create_listing
 from ops_cli.platforms.tmcs.product import learn_product_sync, list_products, run_product_sync
 from ops_cli.platforms.tmcs.promotion_bill import learn_promotion_bill, run_promotion_bill_download
 from ops_cli.platforms.tmcs.stock import query_stock
+from ops_cli.platforms.tmcs.xp_workorder import (
+    DEFAULT_THRESHOLD as XP_WORKORDER_DEFAULT_THRESHOLD,
+    count_xp_workorders,
+    learn_xp_workorder_count,
+)
 
 
 def register(app: typer.Typer, capabilities: dict[str, CapabilitySpec]) -> None:
@@ -29,6 +34,7 @@ def register(app: typer.Typer, capabilities: dict[str, CapabilitySpec]) -> None:
     tmcs_bill_app = typer.Typer(help="TMCS bill commands.", no_args_is_help=True)
     tmcs_promotion_bill_app = typer.Typer(help="TMCS promotion bill commands.", no_args_is_help=True)
     tmcs_listing_app = typer.Typer(help="TMCS listing commands.", no_args_is_help=True)
+    tmcs_xp_workorder_app = typer.Typer(help="TMCS XP workorder commands.", no_args_is_help=True)
 
     # --- Auth ---
 
@@ -266,6 +272,39 @@ def register(app: typer.Typer, capabilities: dict[str, CapabilitySpec]) -> None:
     def tmcs_listing_create(ctx: typer.Context) -> None:
         _execute(ctx, command_name="ops tmcs listing create", params={}, handler=create_listing)
 
+    # --- XP Workorder ---
+
+    @tmcs_xp_workorder_app.command("count")
+    def tmcs_xp_workorder_count(
+        ctx: typer.Context,
+        threshold: int = typer.Option(
+            XP_WORKORDER_DEFAULT_THRESHOLD,
+            "--threshold",
+            help="工单数量阈值，超过则 exceeded=true。",
+        ),
+        dry_run: bool = typer.Option(
+            False, "--dry-run", help="不读取 scene、不请求平台，返回模拟工单数量。"
+        ),
+    ) -> None:
+        _execute(
+            ctx,
+            command_name="ops tmcs xp-workorder count",
+            params={"threshold": threshold, "dry_run": dry_run},
+            handler=lambda: count_xp_workorders(threshold=threshold, dry_run=dry_run),
+        )
+
+    @tmcs_xp_workorder_app.command("learn")
+    def tmcs_xp_workorder_learn(
+        ctx: typer.Context,
+        force: bool = typer.Option(False, "--force", help="即使 scene 存在也重新捕获。"),
+    ) -> None:
+        _execute(
+            ctx,
+            command_name="ops tmcs xp-workorder learn",
+            params={"force": force},
+            handler=lambda: learn_xp_workorder_count(force=force),
+        )
+
     # --- Wire up Typer hierarchy ---
 
     tmcs_app.add_typer(tmcs_auth_app, name="auth")
@@ -275,6 +314,7 @@ def register(app: typer.Typer, capabilities: dict[str, CapabilitySpec]) -> None:
     tmcs_app.add_typer(tmcs_bill_app, name="bill")
     tmcs_app.add_typer(tmcs_promotion_bill_app, name="promotion-bill")
     tmcs_app.add_typer(tmcs_listing_app, name="listing")
+    tmcs_app.add_typer(tmcs_xp_workorder_app, name="xp-workorder")
 
     # --- Register capabilities ---
 
@@ -295,6 +335,19 @@ def register(app: typer.Typer, capabilities: dict[str, CapabilitySpec]) -> None:
         CapabilitySpec(id="tmcs.promotion-bill.download", platform="tmcs", command="promotion-bill download", scenes=("tmcs_promotion_zdx_bill_export", "tmcs_promotion_wxt_bill_export", "download_file_query"), artifact_types=("xlsx", "csv")),
         CapabilitySpec(id="tmcs.promotion-bill.learn", platform="tmcs", command="promotion-bill learn", scenes=("tmcs_promotion_zdx_bill_export", "tmcs_promotion_wxt_bill_export", "download_file_query"), recovery_policy="explicit"),
         CapabilitySpec(id="tmcs.listing.create", platform="tmcs", command="listing create"),
+        CapabilitySpec(
+            id="tmcs.xp-workorder.count",
+            platform="tmcs",
+            command="xp-workorder count",
+            scenes=("xp_workorder_count",),
+        ),
+        CapabilitySpec(
+            id="tmcs.xp-workorder.learn",
+            platform="tmcs",
+            command="xp-workorder learn",
+            scenes=("xp_workorder_count",),
+            recovery_policy="explicit",
+        ),
     ]:
         capabilities[spec.id] = spec
 

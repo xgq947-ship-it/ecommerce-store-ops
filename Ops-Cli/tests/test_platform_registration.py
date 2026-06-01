@@ -60,8 +60,8 @@ def test_capabilities_populated_after_registration() -> None:
     assert "tmcs.auth.check" in ids
     assert "tmcs.product.list" in ids
     assert "browser.check" in ids
-    # Total: 1 browser + 20 JST + 16 TMCS = 37
-    assert len(ids) == 37
+    # Total: 1 browser + 20 JST + 18 TMCS = 39
+    assert len(ids) == 39
 
 
 def test_capability_for_command_works_after_registration() -> None:
