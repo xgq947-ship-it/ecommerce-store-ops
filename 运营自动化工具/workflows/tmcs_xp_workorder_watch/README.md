@@ -2,7 +2,7 @@
 
 ## 用途
 
-读取猫超后台「XP 工单处理」当前待处理工单数量，与阈值比较。超过阈值时输出告警文案；否则输出当前数量与"无需处理"状态。第一版不真正推送通知（仅占位）。
+读取猫超首页「基础待办」卡片中的 `XP工单处理 紧急(n)` 数量，与阈值比较。超过阈值时输出告警文案；否则输出当前数量与“无需处理”状态。第一版不真正推送通知（仅占位）。
 
 ## 调用链
 
@@ -11,7 +11,7 @@ run.py workflow tmcs_xp_workorder_watch
   └─ workflows/tmcs_xp_workorder_watch/workflow.py
        └─ clients/ops_cli_client.run_ops_json
             └─ ops --json tmcs xp-workorder count --threshold N [--dry-run]
-                 └─ Ops-Cli tmcs/xp_workorder.py  (scene: tmall_chaoshi/xp_workorder_count)
+                 └─ Ops-Cli tmcs/xp_workorder.py  (读取猫超首页 DOM 文本)
 ```
 
 平台 URL/Cookie/Selector/Playwright/CDP 全部封装在 Ops-Cli；business 层只消费 JSON。
@@ -21,7 +21,7 @@ run.py workflow tmcs_xp_workorder_watch
 | 参数 | 默认值 | 说明 |
 |---|---|---|
 | `--threshold` | `4` | 工单数量阈值，`count > threshold` 视为超过 |
-| `--dry-run` | False | 安全预览：Ops-Cli 不读 scene、不请求平台，返回 simulated=true |
+| `--dry-run` | False | 安全预览：Ops-Cli 不访问首页，返回 simulated=true |
 | `--notify` | False | 预留参数，第一版不真实推送，输出 TODO |
 | `--json` | False | 仅占位，run.py 不消费 |
 
@@ -44,7 +44,7 @@ run.py workflow tmcs_xp_workorder_watch
   "threshold": 4,
   "exceeded": false,
   "message": "当前猫超 XP 工单数量：0，未超过阈值 4",
-  "source": "simulated",        // simulated | api
+  "source": "simulated",        // simulated | dom
   "simulated": true,
   "scene": "tmall_chaoshi/xp_workorder_count",
   "ops_context_path": "...",
@@ -59,12 +59,18 @@ run.py workflow tmcs_xp_workorder_watch
 - dry-run 绝不发送企微/微信、不处理工单、不写 Excel。
 - 失败语义：`fetch_workorder_count` 失败即终止 workflow，输出 `errors`。
 
-## scene 学习
+## 当前实现口径
 
-如 scene 不存在或登录态失效：
+- `Ops-Cli` 真实执行时会打开 `https://web.txcs.tmall.com/`
+- 直接从首页正文提取 `XP工单处理 紧急(n)`
+- 当前实测有效值为首页卡片里展示的紧急数量，不再使用“近 365 天总工单”等接口字段
+- `ops --json tmcs xp-workorder learn` 仅保留兼容入口，返回“无需 scene 学习”的说明，不再抓接口结构
+
+兼容命令：
 
 ```bash
-ops --json --interactive-login tmcs xp-workorder learn [--force]
+ops --json tmcs xp-workorder count
+ops --json tmcs xp-workorder count --threshold 4
+ops --json tmcs xp-workorder count --dry-run
+ops --json tmcs xp-workorder learn
 ```
-
-在交互终端运行，按提示在主浏览器登录猫超并进入「XP 工单处理」页，由 SessionHub 抓取列表接口结构。

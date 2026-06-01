@@ -57,6 +57,8 @@
 - `ops --json tmcs promotion-bill learn --source all`
 - `ops --json tmcs promotion-bill download --last-month`
 - `ops --json tmcs listing create`
+- `ops --json tmcs xp-workorder count`
+- `ops --json tmcs xp-workorder learn`
 
 已覆盖能力：
 
@@ -65,6 +67,7 @@
 - 库存导出 / 调整
 - 月账单下载：`HDB` 明细、`对账单列表`
 - 推广账单下载：智多星、万象台；智多星保留平台完整资金流水 `.xlsx` 原表，万象台按页面真实返回保留 `.csv`
+- XP 工单数量读取：直接从猫超首页可见文本提取 `XP工单处理 紧急(n)`，不再依赖接口计数返回
 
 当前 TMCS 账单链路依赖的 scene：
 
@@ -77,6 +80,14 @@
 - `statement_bill_list_for_supplier` 负责 HDB 列表查询
 - `statement_bill_dynamic_list` 负责触发 `对账单列表` 导出任务
 - `download_file_query` 负责查询下载中心文件
+
+XP 工单监控当前口径：
+
+- `tmcs xp-workorder count` 真实执行时会打开猫超首页 `https://web.txcs.tmall.com/`
+- 从首页正文提取 `XP工单处理 紧急(n)`，输出 `count`
+- `source` 字段为 `dom`
+- `learn` 入口仅保留兼容说明，不再真正沉淀 scene
+- `--dry-run` 返回 `simulated=true`
 
 ## 浏览器能力
 

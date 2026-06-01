@@ -12,6 +12,7 @@
   - 商品列表同步
   - 库存导出 / 库存调整 / 一盘货库存查询
   - 月账单下载
+  - XP 工单数量读取（首页 DOM 提取）
 - `jst`
   - 聚水潭认证检查
   - 商品资料导出同步
@@ -91,6 +92,10 @@ ops --json tmcs promotion-bill download --source zdx --last-month
 ops --json tmcs promotion-bill download --source wxt --last-month
 ops --json tmcs inventory export
 ops --json tmcs stock query --item-ids 1052534376394,234567 --warehouse-code mc_aokesi_suolong --output json
+ops --json tmcs xp-workorder count
+ops --json tmcs xp-workorder count --threshold 4
+ops --json tmcs xp-workorder count --dry-run
+ops --json tmcs xp-workorder learn
 
 ops --json jst auth check
 ops --json jst product sync
@@ -111,6 +116,13 @@ ops --json jst shop-goods import --file /path/to/jst_shop_goods_import.xlsx --sh
 ```
 
 推广账单默认下载上一个自然月；智多星资金流水导出按页面文件中心返回完整 `.xlsx` 原始表，万象台按阿里妈妈页面真实返回保留 `.csv`，统一落到 `~/Downloads`，再由业务编排层按账期汇总。
+
+猫超 XP 工单数量命令当前口径：
+
+- `tmcs xp-workorder count` 真实执行时不再依赖历史 scene 回放。
+- 命令会直接打开 `https://web.txcs.tmall.com/`，从首页可见文本中提取 `XP工单处理 紧急(n)`。
+- `learn` 入口仍保留兼容，但当前只返回说明：这条能力已经改成首页 DOM 读取，无需额外学习 scene。
+- `--dry-run` 只返回 `simulated=true` 占位结果，不访问页面。
 
 猫超账单下载当前正式链路：
 
@@ -159,6 +171,10 @@ TMCS_BILL_DOWNLOAD_DIR=/Users/dasheng/Downloads
 - `9222` 浏览器：只给 SessionHub 长期沉淀 scene、复检和稳定执行。
 - 禁止把“只用 9222 的单浏览器 capture”叫做双浏览器学习。
 - 正式业务执行尽量走 `run.py -> Ops-Cli -> SessionHub 9222`；只有链路缺口学习时才临时用主浏览器补真实接口信息，再回灌给 `9222` scene。
+
+补充：
+
+- `tmcs xp-workorder count` 当前不是抓接口学习场景，而是首页 DOM 文本提取场景；不需要主浏览器学习，也不依赖 `PRIMARY_CHROME_CDP_URL`。
 
 ## 9222 机制
 

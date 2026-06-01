@@ -19,8 +19,14 @@ ops --json ...
 - `tmcs_sync_jst_shop_goods` -> `ops --json tmcs stock query` + `ops --json jst shop-goods import`
 - `tag_jst_brush_orders` -> `ops --json jst order label`
 - `jst_brush_reimburse_workorder` -> `ops --json jst order reimburse`
+- `jst_order_invoice_workorder` -> `ops --json jst order invoice`
 - `tmall_monthly_bill/downloader.py` -> `ops --json tmcs bill download`
+- `tmcs_xp_workorder_watch` -> `ops --json tmcs xp-workorder count`
 - `jst_pickup_watch` -> `ops --json jst order pickup-watch --hours 48`
+
+不走 `Ops-Cli` 平台请求、只读本地数据的能力：
+
+- `tmcs_sku_roi` -> 读取 `主数据/猫超商品列表导出 (最新）.xlsx`、`主数据/聚水潭商品资料（最新）.xlsx`、`config/tmcs_sku_roi.json`
 
 ## 返回约定
 

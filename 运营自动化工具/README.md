@@ -37,13 +37,16 @@
 - `append_brush_orders`
 - `tag_jst_brush_orders`
 - `jst_brush_reimburse_workorder`
+- `jst_order_invoice_workorder`
 - `buyer_show`
 - `company_nas_listing`
 - `company_nas_index`
 - `process_maochao_bills`
 - `update_jst_products`
 - `update_maochao_goods`
+- `tmcs_sku_roi`
 - `tmcs_sync_jst_shop_goods`
+- `tmcs_xp_workorder_watch`
 - `jst_pickup_watch`
 - `retry_queue`
 
@@ -51,8 +54,22 @@
 
 step 化流程，入口 `python3 run.py workflow <id>`：
 
-- `demo` — 最小可运行示例，验证 workflow runtime 入口
-- `tmall_monthly_bill` — 猫超月账单整理的包装层，复用 `process_maochao_bills` 同一套实现
+- `append_brush_orders` — 刷单表格登记包装层
+- `buyer_show` — 买家秀打包包装层
+- `company_nas_index` — 公司网盘索引包装层
+- `company_nas_listing` — 公司网盘资料下载/上架包装层
+- `demo` — 最小可运行示例
+- `jst_brush_reimburse_workorder` — 聚水潭刷单报销工单包装层
+- `jst_order_invoice_workorder` — 聚水潭发票工单包装层
+- `jst_order_label` — 聚水潭刷单订单打标包装层
+- `jst_pickup_watch` — 聚水潭揽收监控包装层
+- `jst_product_sync` — 聚水潭商品资料更新包装层
+- `retry_queue` — 失败任务查看/重放包装层
+- `tmall_monthly_bill` — 猫超月账单整理包装层
+- `tmall_product_list` — 猫超商品列表更新包装层
+- `tmcs_sku_roi` — 猫超单品 ROI 测算
+- `tmcs_sync_jst_shop_goods` — 猫超商品信息同步聚水潭店铺商品资料
+- `tmcs_xp_workorder_watch` — 猫超 XP 工单数量监控
 
 ## 任务与 Ops-Cli 的对应关系
 
@@ -60,29 +77,100 @@ step 化流程，入口 `python3 run.py workflow <id>`：
 - `更新猫超商品列表` -> `ops --json tmcs product sync`
 - `刷单订单插黄旗` -> `ops --json jst order label`
 - `刷单报销登记` -> `ops --json jst order reimburse`
+- `聚水潭发票工单` -> `ops --json jst order invoice`
 - `猫超账单下载阶段` -> `ops --json tmcs bill download`
 - `猫超账单整理` -> `ops --json tmcs bill download` + `ops --json tmcs promotion-bill download`
 - `tmcs_sync_jst_shop_goods` skill -> `ops --json tmcs stock query` + `ops --json jst shop-goods import`
+- `猫超单品ROI测算` -> 只读本地 Excel + `config/tmcs_sku_roi.json`
+- `猫超工单监控` -> `ops --json tmcs xp-workorder count`
 - `聚水潭揽收监控` -> `ops --json jst order pickup-watch --hours 48`
 
 ## 常用命令
 
 ```bash
+python3 -m pip install -r requirements.txt
 python3 run.py --list
 python3 run.py 更新聚水潭资料 --dry-run --use-local-only
 python3 run.py 更新猫超商品列表 --dry-run --skip-auto-download
+python3 run.py 刷单表格登记 --dry-run
 python3 run.py 聚水潭商品信息同步猫超 --item-ids 1052305450766 --import-jst --import-mode cover
+python3 run.py 猫超单品ROI测算 --sku-code AUXAMUZ8102R01 --dry-run
+python3 run.py 猫超工单监控
 python3 run.py 刷单订单插黄旗 --dry-run --limit 1
 python3 run.py buyer_show --buyer-show-path "/绝对路径/买家秀" --model "AQA-12D-838" --dry-run
 python3 run.py buyer_show --buyer-show-path "/绝对路径/买家秀" --model "AQA-12D-838" --reset-rotation
 python3 run.py 查看失败任务
+python3 run.py 查看失败任务 --all --dry-run
 python3 run.py 更新公司网盘索引 --dry-run
 python3 run.py 聚水潭揽收监控 --dry-run --notify
 python3 run.py 聚水潭揽收监控 --notify
-python3 run.py workflow demo --dry-run
 python3 run.py workflow tmall_monthly_bill --dry-run
 python3 run.py workflow tmall_monthly_bill --month 2026-05 --dry-run
+python3 run.py workflow tmcs_sku_roi --sku-code AUXAMUZ8102R01 --dry-run
+python3 run.py workflow tmcs_xp_workorder_watch --dry-run
+python3 run.py workflow append_brush_orders --dry-run
+python3 run.py workflow retry_queue --dry-run
 ```
+
+## 关键配置
+
+```text
+config/paths.yaml             # 本机路径与主数据位置
+config/pickup_watch.json      # 揽收监控时效、仓库班次、通知配置
+config/tmcs_sku_roi.json      # ROI 测算参数
+runtime/context/              # 旧任务上下文
+runtime/runs/                 # workflow 运行记录
+logs/                         # 任务与 workflow 日志
+```
+
+`config/tmcs_sku_roi.json` 当前字段：
+
+- `supply_price_factor`
+- `vip_discount_rate`
+- `general_fee_rate`
+- `other_fee_rate`
+- `storage_fee_rate`
+- `tax_rate`
+- `management_fee_rate`
+- `refund_rate`
+- `refund_flat_fee`
+- `domestic_shipping_fee`
+- `gift_cost`
+- `safe_profit_rate`
+- `ideal_promotion_ratio`
+
+## 猫超工单监控
+
+业务入口：
+
+```bash
+python3 run.py 猫超工单监控
+python3 run.py workflow tmcs_xp_workorder_watch --threshold 4 --dry-run
+```
+
+说明：
+
+- 真实执行调用 `ops --json tmcs xp-workorder count`
+- `Ops-Cli` 当前直接读取猫超首页 DOM 文本中的 `XP工单处理 紧急(n)`
+- `count > threshold` 才视为超阈值
+- `--notify` 目前仍是占位，不会真正发送通知
+
+## 猫超单品 ROI 测算
+
+入口：
+
+```bash
+python3 run.py 猫超单品ROI测算 --sku-code AUXAMUZ8102R01 --dry-run
+python3 run.py workflow tmcs_sku_roi --product-code 762065566026 --dry-run
+python3 run.py workflow tmcs_sku_roi --sku-code AUXAMUZ8102R01 --output "/Users/dasheng/Desktop/roi_result.xlsx"
+```
+
+说明：
+
+- 只读取本地猫超商品主表、聚水潭商品主表和 `config/tmcs_sku_roi.json`
+- 不请求猫超后台，不请求聚水潭后台
+- 输出口径为 `保本ROI`、`安全ROI`、`理想ROI`
+- `--output` 支持 `.json` 和 `.xlsx`
 
 ## 聚水潭订单揽收监控
 
@@ -137,8 +225,22 @@ python3 run.py workflow tmall_monthly_bill --month 2026-05 --dry-run
     runtime/            # workflow runtime 内核（models/result/storage/workflow/runner/registry）
   tasks/                # 旧脚本任务（不变）
   workflows/            # 新 step 化 workflow（包装层）
+    append_brush_orders/
+    buyer_show/
+    company_nas_index/
+    company_nas_listing/
     demo/
+    jst_brush_reimburse_workorder/
+    jst_order_invoice_workorder/
+    jst_order_label/
+    jst_pickup_watch/
+    jst_product_sync/
+    retry_queue/
     tmall_monthly_bill/
+    tmall_product_list/
+    tmcs_sku_roi/
+    tmcs_sync_jst_shop_goods/
+    tmcs_xp_workorder_watch/
   skills/
   logs/
   runtime/

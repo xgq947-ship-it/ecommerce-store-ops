@@ -17,6 +17,8 @@
   python3 run.py workflow <workflow_id> [--dry-run] [--month YYYY-MM]
   python3 run.py workflow demo --dry-run
   python3 run.py workflow tmall_monthly_bill --dry-run
+  python3 run.py workflow tmcs_sku_roi --sku-code AUXAMUZ8102R01 --dry-run
+  python3 run.py workflow tmcs_xp_workorder_watch --dry-run
   ```
 - workflow 是**包装层**：复用 `tasks/` 下成熟的业务实现（解析、Excel、下载），只把它们重新编排成步骤。不替代、不重写旧任务。
 
@@ -90,6 +92,25 @@ python3 run.py artifacts --month 2026-05
 5. 写 `README.md` 说明步骤、dry-run 行为、产物、边界。
 
 无需改动 `run.py` 或 `registry.py`——`workflow` 子命令自动按目录发现。
+
+当前已落地的 workflow：
+
+- `append_brush_orders`
+- `buyer_show`
+- `company_nas_index`
+- `company_nas_listing`
+- `demo`
+- `jst_brush_reimburse_workorder`
+- `jst_order_invoice_workorder`
+- `jst_order_label`
+- `jst_pickup_watch`
+- `jst_product_sync`
+- `retry_queue`
+- `tmall_monthly_bill`
+- `tmall_product_list`
+- `tmcs_sku_roi`
+- `tmcs_sync_jst_shop_goods`
+- `tmcs_xp_workorder_watch`
 
 ## step 怎么写
 
