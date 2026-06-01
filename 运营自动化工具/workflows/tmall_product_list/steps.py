@@ -30,8 +30,27 @@ def _parse_flags(ctx: StepContext) -> argparse.Namespace:
 
 def _data(ctx: StepContext) -> dict:
     payload = ctx.state.get("payload") or {}
-    data = payload.get("data") if isinstance(payload, dict) else {}
-    return data if isinstance(data, dict) else {}
+    return payload.get("data") if isinstance(payload, dict) and isinstance(payload.get("data"), dict) else {}
+
+
+def _sync_summary(data: dict) -> dict | None:
+    summary = data.get("sync_summary")
+    if isinstance(summary, dict):
+        return summary
+    keys = (
+        "original_latest_rows",
+        "import_rows",
+        "new_rows",
+        "final_latest_rows",
+        "exact_replaced",
+        "fuzzy_replaced",
+        "unchanged",
+        "empty_barcode",
+        "missed",
+        "multiple_candidates",
+    )
+    extracted = {key: data[key] for key in keys if key in data}
+    return extracted or None
 
 
 def check_inputs(ctx: StepContext):
@@ -75,14 +94,14 @@ def download_tmcs_products(ctx: StepContext):
         outputs={
             "success": bool(payload.get("success")) if isinstance(payload, dict) else False,
             "command": payload.get("command") if isinstance(payload, dict) else None,
-            "import_file": data.get("import_file"),
+            "import_file": data.get("import_file") or data.get("source"),
         }
     )
 
 
 def validate_products(ctx: StepContext):
     data = _data(ctx)
-    return success_result(outputs={"sync_summary": data.get("sync_summary")})
+    return success_result(outputs={"sync_summary": _sync_summary(data)})
 
 
 def update_master_data(ctx: StepContext):
@@ -90,16 +109,16 @@ def update_master_data(ctx: StepContext):
     data = _data(ctx)
     if flags.dry_run:
         return success_result(
-            outputs={"skipped": True, "reason": "dry-run：Ops-Cli 仅预览，未写主表/最新表", "latest_file": data.get("latest_file")}
+            outputs={"skipped": True, "reason": "dry-run：Ops-Cli 仅预览，未写主表/最新表", "latest_file": data.get("latest_file") or data.get("output_path")}
         )
-    return success_result(outputs={"latest_file": data.get("latest_file"), "written": True})
+    return success_result(outputs={"latest_file": data.get("latest_file") or data.get("output_path"), "written": True})
 
 
 def collect_artifacts(ctx: StepContext):
     flags = ctx.state["flags"]
     data = _data(ctx)
     artifacts = []
-    latest_file = data.get("latest_file")
+    latest_file = data.get("latest_file") or data.get("output_path")
     if not flags.dry_run and latest_file and Path(str(latest_file)).exists():
         artifacts.append(
             Artifact(type="xlsx", role="master_latest", name=Path(str(latest_file)).name, path=str(latest_file), platform="tmcs")
@@ -108,9 +127,9 @@ def collect_artifacts(ctx: StepContext):
         outputs={
             "task": "update_maochao_goods",
             "dry_run": flags.dry_run,
-            "import_file": data.get("import_file"),
+            "import_file": data.get("import_file") or data.get("source"),
             "latest_file": latest_file,
-            "sync_summary": data.get("sync_summary"),
+            "sync_summary": _sync_summary(data),
         },
         artifacts=artifacts,
     )

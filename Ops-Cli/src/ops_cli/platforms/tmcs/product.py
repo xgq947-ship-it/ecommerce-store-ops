@@ -39,6 +39,41 @@ from ops_cli.platforms.tmcs.shared import merge_cookie_header
 
 
 TEMPLATE_PATH = Path("data/tmcs/product_sync_template.json")
+TMCS_MASTER_HEADERS = [
+    "商品编码",
+    "商品名称",
+    "商品上下架状态",
+    "SKU编码",
+    "SKU上下架状态",
+    "生产厂家",
+    "条码",
+    "零售价(元)",
+    "建档供应商名称",
+    "所属店铺",
+    "货品编码",
+    "淘系品牌ID",
+    "淘系品牌名称",
+    "自营品牌ID",
+    "自营品牌名称",
+    "淘系类目名称",
+    "创建时间",
+    "销售类型",
+    "商品类型",
+    "一盘货状态",
+    "审核状态",
+    "采购负责人",
+    "建档供应商编码",
+    "一级自营类目ID",
+    "一级自营类目名称",
+    "二级自营类目ID",
+    "二级自营类目名称",
+    "三级自营类目ID",
+    "三级自营类目名称",
+    "自营类目ID",
+    "自营类目名称",
+    "类目ID",
+    "数据来源",
+]
 
 
 def _template_path() -> Path:
@@ -156,6 +191,102 @@ def _build_row_by_latest_header(latest_header: list[str], import_header: list[st
     return row
 
 
+def _tmcs_status_text(value: object) -> str | None:
+    if value in (1, "1", True):
+        return "上架"
+    if value in (-1, "-1", 0, "0", False):
+        return "下架"
+    text = _norm(value)
+    if text in {"UP", "ON_SHELF"}:
+        return "上架"
+    if text in {"DOWN", "OFF_SHELF"}:
+        return "下架"
+    return None
+
+
+def _tmcs_excel_time(value: object) -> str | None:
+    if value in (None, ""):
+        return None
+    try:
+        timestamp = float(str(value))
+    except (TypeError, ValueError):
+        return str(value)
+    if timestamp > 10_000_000_000:
+        timestamp /= 1000
+    return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _first_non_empty(*values: object) -> object | None:
+    for value in values:
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _parse_sku_rows(item: dict[str, Any]) -> list[dict[str, Any]]:
+    sku_rows = item.get("skuVOList")
+    if isinstance(sku_rows, list):
+        return [sku for sku in sku_rows if isinstance(sku, dict)]
+    return []
+
+
+def _build_tmcs_master_row(item: dict[str, Any], sku: dict[str, Any] | None) -> list[object]:
+    self_category_id = _first_non_empty(item.get("selfCategoryId"), item.get("categoryId"))
+    self_category_name = _first_non_empty(item.get("selfCategoryName"), item.get("categoryName"))
+    sku = sku or {}
+    reserve_price = _first_non_empty(sku.get("reservePriceCNY"), item.get("reservePriceCNY"), item.get("reservePrice"))
+    if isinstance(reserve_price, (int, float)) and reserve_price > 10_000:
+        reserve_price = reserve_price / 100
+    product_type = _first_non_empty(item.get("itemChannelType"), item.get("itemType"))
+    return [
+        item.get("itemId"),
+        item.get("title"),
+        _tmcs_status_text(item.get("updownStatus")),
+        _first_non_empty(sku.get("skuId"), sku.get("taoSkuId")),
+        _tmcs_status_text(_first_non_empty(sku.get("updownStatus"), sku.get("mainSkuUpdownStatus"))),
+        item.get("storeName"),
+        _first_non_empty(sku.get("barcode"), item.get("barcode")),
+        reserve_price,
+        item.get("supplierName"),
+        _first_non_empty(item.get("shopName"), item.get("storeName")),
+        _first_non_empty(sku.get("targetScItemId"), item.get("storageGoodsId"), item.get("erpCode")),
+        item.get("brandId"),
+        item.get("brandName"),
+        item.get("selfBrandId"),
+        item.get("selfBrandName"),
+        item.get("categoryName"),
+        _tmcs_excel_time(item.get("gmtCreate")),
+        item.get("itemChannelType"),
+        product_type,
+        item.get("stockShareStatus"),
+        _first_non_empty(item.get("auditStatusDesc"), item.get("auctionSubStatusDesc")),
+        item.get("categoryManager"),
+        item.get("supplierCode"),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        self_category_id,
+        self_category_name,
+        item.get("categoryId"),
+        "product_search_api_fallback",
+    ]
+
+
+def _build_tmcs_master_rows(items: list[dict[str, Any]]) -> list[list[object]]:
+    rows: list[list[object]] = []
+    for item in items:
+        sku_rows = _parse_sku_rows(item)
+        if sku_rows:
+            for sku in sku_rows:
+                rows.append(_build_tmcs_master_row(item, sku))
+        else:
+            rows.append(_build_tmcs_master_row(item, None))
+    return rows
+
+
 def _build_jst_code_pool(jst_rows: list[list[object]], jst_header: list[str]) -> tuple[dict[str, str], list[str]]:
     product_code_idx = jst_header.index("商品编码")
     exact_map: dict[str, str] = {}
@@ -260,15 +391,16 @@ def _download_goods_from_search(*, search_scene: dict[str, Any], destination: Pa
             break
     if not all_rows:
         raise RuntimeError("猫超商品搜索接口未返回可写入 Excel 的数据")
-    flattened = [_flatten_row(row) for row in all_rows]
-    headers_out = sorted({key for row in flattened for key in row})
+    master_rows = _build_tmcs_master_rows(all_rows)
+    if not master_rows:
+        raise RuntimeError("猫超商品搜索接口未返回可同步的商品行")
     destination.parent.mkdir(parents=True, exist_ok=True)
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "商品列表"
-    sheet.append(headers_out)
-    for row in flattened:
-        sheet.append([row.get(key) for key in headers_out])
+    sheet.append(TMCS_MASTER_HEADERS)
+    for row in master_rows:
+        sheet.append(row)
     workbook.save(destination)
     return {
         "status_code": 200,
@@ -277,7 +409,8 @@ def _download_goods_from_search(*, search_scene: dict[str, Any], destination: Pa
         "file_name": destination.name,
         "download_size": destination.stat().st_size,
         "source": "product_search_api_fallback",
-        "row_count": len(all_rows),
+        "row_count": len(master_rows),
+        "item_count": len(all_rows),
     }
 
 

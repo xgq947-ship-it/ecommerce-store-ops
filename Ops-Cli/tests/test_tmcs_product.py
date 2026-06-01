@@ -220,3 +220,55 @@ def test_tmcs_product_sync_retries_after_auth_refresh(tmp_path, monkeypatch) -> 
     assert result.data["downloaded"] is True
     assert result.data["auth_refresh_applied"] is True
     assert refresh_calls["count"] == 1
+
+
+def test_download_goods_from_search_writes_tmcs_master_shape(tmp_path, monkeypatch) -> None:
+    destination = tmp_path / "猫超商品列表导出.xlsx"
+
+    payload = {
+        "data": {
+            "list": [
+                {
+                    "itemId": "101",
+                    "title": "测试商品",
+                    "updownStatus": -1,
+                    "barcode": "ITEM-BAR",
+                    "supplierName": "供应商A",
+                    "shopName": "天猫超市",
+                    "brandId": "30844",
+                    "brandName": "SUPOR/苏泊尔",
+                    "selfBrandId": "400",
+                    "selfBrandName": "自营品牌",
+                    "categoryName": "按摩器",
+                    "gmtCreate": 1769760269000,
+                    "itemChannelType": "直营商品",
+                    "stockShareStatus": 1,
+                    "auditStatusDesc": "已审核",
+                    "categoryManager": "沉汤",
+                    "supplierCode": "SUP-1",
+                    "selfCategoryId": "21060102",
+                    "selfCategoryName": "按摩机/仪",
+                    "categoryId": "201157408",
+                    "skuVOList": [
+                        {"skuId": "SKU-1", "updownStatus": 1, "barcode": "BAR-1", "targetScItemId": "SC-1", "reservePriceCNY": 439.0},
+                        {"skuId": "SKU-2", "updownStatus": 0, "barcode": "BAR-2", "targetScItemId": "SC-2", "reservePriceCNY": 429.0},
+                    ],
+                }
+            ]
+        }
+    }
+
+    monkeypatch.setattr(product, "tmcs_request", lambda *args, **kwargs: (200, payload, b""))
+
+    result = product._download_goods_from_search(
+        search_scene={"post_data_form": {}, "headers": {}, "method": "POST", "url": "https://example.com"},
+        destination=destination,
+    )
+
+    assert result["source"] == "product_search_api_fallback"
+    assert result["row_count"] == 2
+
+    header, rows = product._load_sheet_data(destination)
+    assert header == product.TMCS_MASTER_HEADERS
+    assert rows[0][:11] == ["101", "测试商品", "下架", "SKU-1", "上架", None, "BAR-1", 439.0, "供应商A", "天猫超市", "SC-1"]
+    assert rows[1][:11] == ["101", "测试商品", "下架", "SKU-2", "下架", None, "BAR-2", 429.0, "供应商A", "天猫超市", "SC-2"]

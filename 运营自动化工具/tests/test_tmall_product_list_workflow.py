@@ -70,3 +70,31 @@ def test_real_run_writes_master_and_artifact(monkeypatch, tmp_path: Path) -> Non
     assert "--dry-run" not in seen[0]
     artifacts = json.loads((runner.last_run_dir / "artifacts.json").read_text(encoding="utf-8"))
     assert any(a["role"] == "master_latest" for a in artifacts)
+
+
+def test_real_run_reads_ops_cli_output_path_and_flat_summary(monkeypatch, tmp_path: Path) -> None:
+    latest = tmp_path / "master.xlsx"
+    latest.write_bytes(b"PK")
+
+    monkeypatch.setattr(
+        steps.legacy,
+        "run_ops_json",
+        lambda command, *a, **k: {
+            "success": True,
+            "data": {
+                "source": str(tmp_path / "import.xlsx"),
+                "output_path": str(latest),
+                "new_rows": 12,
+                "final_latest_rows": 688,
+            },
+        },
+    )
+
+    runner = WorkflowRunner(tmp_path)
+    run = runner.run(build_workflow(), inputs={"dry_run": False, "args": []}, dry_run=False)
+
+    assert run.status == "success"
+    update_step = json.loads((runner.last_run_dir / "steps" / "update_master_data.json").read_text(encoding="utf-8"))
+    validate_step = json.loads((runner.last_run_dir / "steps" / "validate_products.json").read_text(encoding="utf-8"))
+    assert update_step["outputs"]["latest_file"] == str(latest)
+    assert validate_step["outputs"]["sync_summary"] == {"new_rows": 12, "final_latest_rows": 688}
