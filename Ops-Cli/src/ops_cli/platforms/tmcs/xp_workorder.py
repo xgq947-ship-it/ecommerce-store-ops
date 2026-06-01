@@ -1,144 +1,90 @@
-"""TMCS XP 工单数量读取与 scene 学习。
+"""TMCS XP 工单数量读取。
 
-只暴露两条 capability：
-- count：读取当前 XP 工单数量，可与阈值比较
-- learn：在主浏览器辅助下捕获 scene
+真实模式直接读取猫超首页可见文本，从首页待办卡片提取：
+`XP工单处理 紧急(4)`
 
-工单接口 endpoint / 字段名在 learn 阶段从主浏览器抓取的 scene 中获取，
-本模块不写死任何业务 URL；count 通过 scene 回放工单列表/计数接口拿到总数。
-
-dry-run：完全跳过 scene 读取与平台请求，返回 simulated=True 的占位结果。
+dry-run：完全跳过浏览器读取，返回 simulated=True 的占位结果。
 """
 
 from __future__ import annotations
 
-from typing import Any
+import re
+import sys
+from pathlib import Path
 
-from ops_cli.capabilities import (
-    current_capability_execution,
-    mark_scene_refreshed,
-    require_interactive_recovery,
-)
-from ops_cli.integrations.sessionhub import (
-    SessionHubIntegrationError,
-    get_scene_manager,
-)
+from ops_cli.config import get_config
 from ops_cli.output import CommandResponse
 from ops_cli.platforms.tmcs.shared import (
     TMCS_SITE,
     TMCS_XP_WORKORDER_COUNT_SCENE,
-    check_scene_or_fail,
-    is_probable_auth_error,
-    load_scene_or_fail,
-    sanitize_replay_headers,
-    tmcs_request,
 )
 from ops_cli.runtime_context import write_runtime_context
 
 
 DEFAULT_THRESHOLD = 4
-_NEXT_COMMAND = "ops --json tmcs xp-workorder learn"
-
-# 可能承载工单数量的字段候选，按命中优先级排列。
-_COUNT_FIELD_CANDIDATES = (
-    "totalCount",
-    "total_count",
-    "total",
-    "count",
-    "unprocessedCount",
-    "pendingCount",
-    "waitHandleCount",
-    "todoCount",
-    "unhandledCount",
-)
+TMCS_HOME_URL = "https://web.txcs.tmall.com/"
+_XP_WORKORDER_PATTERN = re.compile(r"XP\s*工单处理\s*紧急\((\d+)\)")
 
 
-def _iter_dicts(value: Any):
-    if isinstance(value, dict):
-        yield value
-        for nested in value.values():
-            yield from _iter_dicts(nested)
-    elif isinstance(value, list):
-        for item in value:
-            yield from _iter_dicts(item)
-
-
-def _coerce_int(value: Any) -> int | None:
-    if isinstance(value, bool):
+def extract_workorder_count(text: str) -> int | None:
+    normalized = re.sub(r"\s+", " ", text or "").strip()
+    match = _XP_WORKORDER_PATTERN.search(normalized)
+    if not match:
         return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float):
-        if value != value:  # NaN
-            return None
-        return int(value)
-    if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return None
+    return int(match.group(1))
+
+
+def _sessionhub_root() -> Path:
+    return Path(get_config().sessionhub_root).expanduser().resolve()
+
+
+def _read_homepage_text() -> str:
+    root = _sessionhub_root()
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+
+    try:
+        from scene.chrome_cdp import CDP_URL, start_chrome  # type: ignore
+    except Exception as exc:  # pragma: no cover - import path guard
+        raise RuntimeError(f"无法加载 SessionHub Chrome 依赖：{exc}") from exc
+
+    ok, msg = start_chrome()
+    if not ok:
+        raise RuntimeError(msg)
+
+    try:
+        from playwright.sync_api import Error as PlaywrightError  # type: ignore
+        from playwright.sync_api import sync_playwright  # type: ignore
+    except ModuleNotFoundError as exc:  # pragma: no cover - environment guard
+        raise RuntimeError("缺少 Playwright，请先运行：pip install -r requirements.txt") from exc
+
+    with sync_playwright() as p:
         try:
-            return int(text)
-        except ValueError:
+            browser = p.chromium.connect_over_cdp(CDP_URL)
+        except PlaywrightError as exc:
+            raise RuntimeError(f"连接 9222 Chrome 失败：{exc}") from exc
+        context = browser.contexts[0] if browser.contexts else browser.new_context()
+        page = context.new_page()
+        try:
+            page.goto(TMCS_HOME_URL, wait_until="domcontentloaded", timeout=30000)
+            deadline_ms = 15000
+            step_ms = 1000
+            waited_ms = 0
+            while True:
+                text = page.locator("body").inner_text(timeout=10000)
+                if extract_workorder_count(text) is not None:
+                    return text
+                if waited_ms >= deadline_ms:
+                    raise RuntimeError(
+                        "WORKORDER_COUNT_NOT_FOUND：猫超首页未找到 `XP工单处理 紧急(n)` 文本。"
+                    )
+                page.wait_for_timeout(step_ms)
+                waited_ms += step_ms
+        finally:
             try:
-                return int(float(text))
-            except ValueError:
-                return None
-    return None
-
-
-def extract_workorder_count(payload: Any) -> int | None:
-    """从平台返回的任意 JSON 中提取工单数量。"""
-    if payload is None:
-        return None
-    # 优先看顶层与典型容器
-    seeds: list[Any] = [payload]
-    if isinstance(payload, dict):
-        for key in ("data", "result", "model"):
-            nested = payload.get(key)
-            if nested is not None:
-                seeds.append(nested)
-    for seed in seeds:
-        for row in _iter_dicts(seed):
-            for field in _COUNT_FIELD_CANDIDATES:
-                if field in row:
-                    parsed = _coerce_int(row[field])
-                    if parsed is not None and parsed >= 0:
-                        return parsed
-    # 兜底：列表长度
-    for seed in seeds:
-        if isinstance(seed, dict):
-            for key in ("rows", "items", "list", "records", "datas"):
-                if isinstance(seed.get(key), list):
-                    return len(seed[key])
-    return None
-
-
-def _request_workorder_count(scene: dict[str, Any]) -> int:
-    method = str(scene.get("method") or "GET").upper()
-    url = scene.get("url")
-    if not url:
-        raise RuntimeError(f"scene {TMCS_XP_WORKORDER_COUNT_SCENE} 缺少 url")
-    headers = sanitize_replay_headers(scene.get("headers") or {}, scene.get("cookies"))
-    post_json = scene.get("post_data_json")
-    post_data = scene.get("post_data") if post_json is None else None
-    if isinstance(post_data, str):
-        body_bytes: Any = post_data.encode("utf-8")
-    else:
-        body_bytes = None
-    _, parsed, _ = tmcs_request(
-        method,
-        str(url),
-        headers=headers,
-        json_body=post_json,
-        data_body=body_bytes,
-    )
-    count = extract_workorder_count(parsed)
-    if count is None:
-        raise RuntimeError(
-            "WORKORDER_COUNT_NOT_FOUND：scene 接口返回中未识别到工单数量字段；"
-            "请重新运行 `ops --json tmcs xp-workorder learn --force` 更新 scene。"
-        )
-    return count
+                page.close()
+            except Exception:
+                pass
 
 
 def count_xp_workorders(
@@ -171,31 +117,17 @@ def count_xp_workorders(
             },
         )
 
-    retried_for_auth = False
-    while True:
-        scene = load_scene_or_fail(
-            TMCS_SITE, TMCS_XP_WORKORDER_COUNT_SCENE, next_command=_NEXT_COMMAND
-        )
-        check_scene_or_fail(
-            TMCS_SITE, TMCS_XP_WORKORDER_COUNT_SCENE, next_command=_NEXT_COMMAND
-        )
-        try:
-            count = _request_workorder_count(scene)
-            break
-        except RuntimeError as exc:
-            if retried_for_auth or not is_probable_auth_error(exc):
-                raise
-            require_interactive_recovery(TMCS_XP_WORKORDER_COUNT_SCENE)
-            learn_xp_workorder_count(force=True)
-            mark_scene_refreshed(TMCS_XP_WORKORDER_COUNT_SCENE)
-            retried_for_auth = True
+    homepage_text = _read_homepage_text()
+    count = extract_workorder_count(homepage_text)
+    if count is None:
+        raise RuntimeError("WORKORDER_COUNT_NOT_FOUND：猫超首页未找到 XP 工单处理紧急数量。")
 
     exceeded = count > threshold
     context_path = write_runtime_context(
         task_name="tmcs_xp_workorder_count",
         status="success",
         inputs=inputs,
-        outputs={"count": count, "threshold": threshold, "exceeded": exceeded},
+        outputs={"count": count, "threshold": threshold, "exceeded": exceeded, "source": "dom"},
     )
     return CommandResponse(
         success=True,
@@ -205,7 +137,7 @@ def count_xp_workorders(
             "count": count,
             "threshold": threshold,
             "exceeded": exceeded,
-            "source": "api",
+            "source": "dom",
             "simulated": False,
             "scene": f"{TMCS_SITE}/{TMCS_XP_WORKORDER_COUNT_SCENE}",
             "dry_run": False,
@@ -215,36 +147,17 @@ def count_xp_workorders(
 
 
 def learn_xp_workorder_count(*, force: bool = False) -> CommandResponse:
-    inputs = {
-        "site": TMCS_SITE,
-        "scene": TMCS_XP_WORKORDER_COUNT_SCENE,
-        "force": force,
-    }
-    manager = get_scene_manager()
-    execution = current_capability_execution()
-    if execution is not None and not execution.allow_recovery:
-        execution.recovery.mark_required()
-        raise RuntimeError(
-            f"scene {TMCS_XP_WORKORDER_COUNT_SCENE} 需要交互登录捕获，"
-            "请在交互终端运行：ops --json --interactive-login tmcs xp-workorder learn"
-        )
-    try:
-        if force:
-            manager.capture_scene(TMCS_SITE, TMCS_XP_WORKORDER_COUNT_SCENE)
-        else:
-            manager.ensure_scene(TMCS_SITE, TMCS_XP_WORKORDER_COUNT_SCENE)
-    except SessionHubIntegrationError as exc:
-        raise RuntimeError(f"SCENE_CAPTURE_FAILED：{exc}") from exc
-    check = manager.check_scene(TMCS_SITE, TMCS_XP_WORKORDER_COUNT_SCENE)
-    if check.get("status") != "valid":
-        reason = (check.get("check_result") or {}).get("reason") or "scene 不可用"
-        raise RuntimeError(f"SCENE_CAPTURE_FAILED：{reason}")
-    mark_scene_refreshed(TMCS_XP_WORKORDER_COUNT_SCENE)
+    inputs = {"site": TMCS_SITE, "scene": TMCS_XP_WORKORDER_COUNT_SCENE, "force": force}
     context_path = write_runtime_context(
         task_name="tmcs_xp_workorder_learn",
         status="success",
         inputs=inputs,
-        outputs={"site": TMCS_SITE, "scene": TMCS_XP_WORKORDER_COUNT_SCENE},
+        outputs={
+            "site": TMCS_SITE,
+            "scene": TMCS_XP_WORKORDER_COUNT_SCENE,
+            "mode": "homepage_dom",
+            "note": "XP 工单监控已改为直接读取猫超首页 DOM 文本，无需 scene 学习。",
+        },
     )
     return CommandResponse(
         success=True,
@@ -253,6 +166,8 @@ def learn_xp_workorder_count(*, force: bool = False) -> CommandResponse:
         data={
             "site": TMCS_SITE,
             "scene": TMCS_XP_WORKORDER_COUNT_SCENE,
+            "mode": "homepage_dom",
+            "note": "XP 工单监控已改为直接读取猫超首页 DOM 文本，无需 scene 学习。",
             "next_command": "ops --json tmcs xp-workorder count",
             "context_path": str(context_path),
         },
