@@ -110,6 +110,49 @@ def test_build_invoice_sheet_rounds_bill_and_ticket_amounts_to_cents() -> None:
     assert invoice_amounts == [Decimal("10"), Decimal("20.02")]
 
 
+def test_build_invoice_sheet_rebalances_ticket_total_to_match_grand_total_cents() -> None:
+    cargo_header = ["后端商品编码", "商品编码", "品名", "商品数量", "含税单价"]
+    cargo_rows = [
+        ["B1", "P1", "商品1", 1, "10.00"],
+        ["B2", "P2", "商品2", 1, "10.00"],
+        ["B3", "P3", "商品3", 1, "10.00"],
+        ["B4", "P4", "商品4", 1, "10.00"],
+        ["B5", "P5", "商品5", 1, "10.00"],
+    ]
+    ticket_header = ["后端商品编码", "商品编码", "含税金额"]
+    ticket_rows = [
+        ["B1", "P1", "0.005"],
+        ["B2", "P2", "0.005"],
+        ["B3", "P3", "0.005"],
+        ["B4", "P4", "0.005"],
+        ["B5", "P5", "0.005"],
+    ]
+
+    invoice_header, invoice_rows, _ = tmall_processor.build_invoice_sheet(cargo_header, cargo_rows, ticket_header, ticket_rows)
+    ticket_idx = invoice_header.index("票扣")
+    invoice_idx = invoice_header.index("开票金额")
+
+    ticket_amounts = [Decimal(str(row[ticket_idx])) for row in invoice_rows]
+    invoice_amounts = [Decimal(str(row[invoice_idx])) for row in invoice_rows]
+
+    assert sum(ticket_amounts) == Decimal("0.02")
+    assert sum(invoice_amounts) == Decimal("50.02")
+
+
+def test_build_invoice_sheet_falls_back_to_backend_code_for_blank_product_code_ticket_rows() -> None:
+    cargo_header = ["后端商品编码", "商品编码", "品名", "商品数量", "含税单价"]
+    cargo_rows = [["B1", None, "商品1", 2, "100.00"]]
+    ticket_header = ["后端商品编码", "商品编码", "含税金额"]
+    ticket_rows = [["B1", None, "-12.34"]]
+
+    invoice_header, invoice_rows, _ = tmall_processor.build_invoice_sheet(cargo_header, cargo_rows, ticket_header, ticket_rows)
+    ticket_idx = invoice_header.index("票扣")
+    invoice_idx = invoice_header.index("开票金额")
+
+    assert Decimal(str(invoice_rows[0][ticket_idx])) == Decimal("-12.34")
+    assert Decimal(str(invoice_rows[0][invoice_idx])) == Decimal("187.66")
+
+
 def test_renders_profit_summary_in_invoice_sheet_right_side() -> None:
     workbook = Workbook()
     invoice = workbook.active

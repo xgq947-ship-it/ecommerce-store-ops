@@ -74,6 +74,16 @@ def round_currency(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.01"))
 
 
+def allocation_group_key(product_code: object, backend_code: object) -> str | None:
+    normalized_product_code = norm(product_code)
+    if normalized_product_code:
+        return normalized_product_code
+    normalized_backend_code = norm(backend_code)
+    if normalized_backend_code:
+        return f"__backend__:{normalized_backend_code}"
+    return None
+
+
 def backend_code_sort_key(value: object) -> tuple[int, str]:
     code = norm(value)
     return (1, "") if code is None else (0, code)
@@ -264,6 +274,27 @@ def allocate_amount_by_ratio(amount: Decimal, weights: list[Decimal]) -> list[De
     return allocations
 
 
+def rebalance_currency_allocations(
+    allocations: dict[int, Decimal],
+    target_total: Decimal,
+    ordered_row_ids: list[int],
+) -> None:
+    current_total = sum(allocations.values(), Decimal("0"))
+    residual = round_currency(target_total) - current_total
+    if residual == Decimal("0"):
+        return
+
+    step = Decimal("0.01") if residual > 0 else Decimal("-0.01")
+    cents = int(abs(residual / Decimal("0.01")))
+    adjustable_ids = [row_id for row_id in ordered_row_ids if row_id in allocations]
+    if not adjustable_ids:
+        return
+
+    for index in range(cents):
+        row_id = adjustable_ids[index % len(adjustable_ids)]
+        allocations[row_id] += step
+
+
 def build_invoice_sheet(
     cargo_header: list[str],
     cargo_rows: list[list[object]],
@@ -316,7 +347,7 @@ def build_invoice_sheet(
         if len(price_values) > 1:
             price_conflict_codes.add(backend_code)
 
-    ticket_by_product_code: dict[str, Decimal] = {}
+    ticket_by_group: dict[str, Decimal] = {}
     ticket_backend_groups: dict[str, dict[str, object]] = {}
     if ticket_backend_idx is not None and ticket_product_idx is not None and ticket_amount_idx is not None:
         for row in ticket_rows:
@@ -336,19 +367,20 @@ def build_invoice_sheet(
             if amount is not None:
                 group["含税金额"] += amount
 
-    for group in ticket_backend_groups.values():
-        product_code = norm(group["商品编码"])
-        if not product_code:
+    for backend_code, group in ticket_backend_groups.items():
+        group_key = allocation_group_key(group["商品编码"], backend_code)
+        if not group_key:
             continue
-        ticket_by_product_code[product_code] = ticket_by_product_code.get(product_code, Decimal("0")) + group["含税金额"]
+        ticket_by_group[group_key] = ticket_by_group.get(group_key, Decimal("0")) + group["含税金额"]
 
     invoice_header = ["后端商品编码", "商品编码", "品名", "商品数量", "含税单价", "账单金额", "票扣", "开票金额"]
     invoice_rows: list[list[object]] = []
     product_group_rows: dict[str, list[dict[str, object]]] = {}
     group_order: list[tuple[str, str | None]] = []
+    group_rows_by_key: dict[tuple[str, str | None], dict[str, object]] = {}
 
-    for group_key in sorted(cargo_groups.keys(), key=lambda item: (item[0], item[1] or "")):
-        group = cargo_groups[group_key]
+    for cargo_group_key in sorted(cargo_groups.keys(), key=lambda item: (item[0], item[1] or "")):
+        group = cargo_groups[cargo_group_key]
         qty = group["商品数量"]
         price = to_decimal(group["含税单价"])
         product_code = norm(group["商品编码"])
@@ -362,44 +394,41 @@ def build_invoice_sheet(
             "账单金额": bill_amount,
             "原始账单金额": bill_amount,
         }
-        if product_code:
-            product_group_rows.setdefault(product_code, []).append(row_data)
-        else:
-            product_group_rows.setdefault(f"__missing__:{group['后端商品编码']}:{len(group_order)}", []).append(row_data)
-        group_order.append(group_key)
+        alloc_group_key = allocation_group_key(group["商品编码"], group["后端商品编码"])
+        if alloc_group_key:
+            product_group_rows.setdefault(alloc_group_key, []).append(row_data)
+        group_rows_by_key[cargo_group_key] = row_data
+        group_order.append(cargo_group_key)
 
     bill_allocations: dict[int, Decimal] = {}
     ticket_allocations: dict[int, Decimal] = {}
+    ordered_ticket_row_ids: list[int] = []
     for rows in product_group_rows.values():
         weights = [(row["原始账单金额"] if row["原始账单金额"] is not None else Decimal("0")) for row in rows]
         bill_total = sum(weights, Decimal("0"))
-        product_code = norm(rows[0]["商品编码"])
-        ticket_total = ticket_by_product_code.get(product_code, Decimal("0")) if product_code else Decimal("0")
+        group_key = allocation_group_key(rows[0]["商品编码"], rows[0]["后端商品编码"])
+        ticket_total = ticket_by_group.get(group_key, Decimal("0")) if group_key else Decimal("0")
         allocated_bills = allocate_amount_by_ratio(bill_total, weights)
         allocated = allocate_amount_by_ratio(ticket_total, weights)
         for index, amount in enumerate(allocated_bills):
             bill_allocations[id(rows[index])] = amount
         for index, amount in enumerate(allocated):
-            ticket_allocations[id(rows[index])] = amount
+            row_id = id(rows[index])
+            ticket_allocations[row_id] = amount
+            ordered_ticket_row_ids.append(row_id)
+
+    rebalance_currency_allocations(
+        ticket_allocations,
+        sum(ticket_by_group.values(), Decimal("0")),
+        ordered_ticket_row_ids,
+    )
 
     for group_key in group_order:
         group = cargo_groups[group_key]
         qty = group["商品数量"]
         price = to_decimal(group["含税单价"])
         bill_amount = qty * price if price is not None else Decimal("0")
-        row_data = None
-        product_code = norm(group["商品编码"])
-        for candidate_rows in product_group_rows.values():
-            for candidate in candidate_rows:
-                if (
-                    candidate["后端商品编码"] == group["后端商品编码"]
-                    and candidate["含税单价"] == group["含税单价"]
-                    and candidate["商品数量"] == qty
-                ):
-                    row_data = candidate
-                    break
-            if row_data is not None:
-                break
+        row_data = group_rows_by_key[group_key]
         bill_amount = bill_allocations.get(id(row_data), round_currency(bill_amount)) if row_data is not None else round_currency(bill_amount)
         ticket_amount = ticket_allocations.get(id(row_data), Decimal("0")) if row_data is not None else Decimal("0")
         if qty == Decimal("0") and ticket_amount == Decimal("0"):
